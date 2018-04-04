@@ -454,12 +454,23 @@ def cumulative_detections(dates=None, template_names=None, detections=None,
             if 31 < (max_date - min_date).days < 365:
                 bins = (max_date - min_date).days
                 ax.set_ylabel('Detections per day')
-            elif (max_date - min_date).days <= 31:
+            elif 2 < (max_date - min_date).days <= 31:
                 bins = (max_date - min_date).days * 4
                 ax.set_ylabel('Detections per 6 hour bin')
+            elif 21600 < (max_date - min_date).total_seconds() <= 172800:
+                bins = (max_date - min_date).total_seconds() // 3600
+                ax.set_ylabel('Detections per hour bin')
+            elif 1800 < (max_date - min_date).total_seconds() <= 21600:
+                bins = (max_date - min_date).total_seconds() // 300
+                ax.set_ylabel('Detections per 5 minute bin')
+            elif (max_date - min_date).total_seconds() <= 1800:
+                bins = (max_date - min_date).total_seconds() // 60
+                ax.set_ylabel('Detections per minute bin')
             else:
                 bins = (max_date - min_date).days // 7
                 ax.set_ylabel('Detections per week')
+            bins = int(bins)
+            print(bins)
             ax.hist(mdates.date2num(plot_dates), bins=bins,
                     label='Rate of detections', color='darkgrey',
                     alpha=0.5)
@@ -578,7 +589,7 @@ def multi_event_singlechan(streams, catalog, station, channel,
                            clip=10.0, pre_pick=2.0,
                            freqmin=False, freqmax=False, realign=False,
                            cut=(-3.0, 5.0), PWS=False, title=False,
-                           save=False, savefile=None):
+                           save=False, savefile=None, subplots=True):
     """
     Plot data from a single channel for multiple events.
 
@@ -626,6 +637,10 @@ def multi_event_singlechan(streams, catalog, station, channel,
         to screen.
     :type savefile: str
     :param savefile: Filename to save to, required for save=True
+    :type subplots: bool
+    :param subplots:
+        Whether to use a separate subplot for every trace, or to plot all on
+        the same axes.
 
     :returns: Aligned and cut :class:`obspy.core.trace.Trace`
     :rtype: list
@@ -742,7 +757,8 @@ def multi_event_singlechan(streams, catalog, station, channel,
         stack = 'linstack'
     for tr in traces:
         print(tr)
-    fig = multi_trace_plot(traces=traces, corr=True, stack=stack)
+    fig = multi_trace_plot(traces=traces, corr=True, stack=stack, show=False,
+                           subplots=subplots)
     if title:
         fig.suptitle(title)
     plt.subplots_adjust(hspace=0)
@@ -755,7 +771,7 @@ def multi_event_singlechan(streams, catalog, station, channel,
 
 
 def multi_trace_plot(traces, corr=True, stack='linstack', size=(7, 12),
-                     show=True, title=None):
+                     show=True, title=None, subplots=True):
     """
     Plot multiple traces (usually from the same station) on the same plot.
 
@@ -776,22 +792,38 @@ def multi_trace_plot(traces, corr=True, stack='linstack', size=(7, 12),
     :param show: Whether to plot the figure to screen or not.
     :type title: str
     :param title: Title to plot
+    :type subplots: bool
+    :param subplots:
+        Whether to use a separate subplot for every trace, or to plot all on
+        the same axes.
     """
     from eqcorrscan.core.match_filter import normxcorr2
-    if stack in ['linstack', 'PWS']:
+    normalize = False
+    if stack in ['linstack', 'PWS'] and subplots:
         fig, axes = plt.subplots(len(traces) + 1, 1, sharex=True,
                                  figsize=size)
-    else:
+        if len(traces) > 1:
+            axes = axes.ravel()
+    elif subplots:
         fig, axes = plt.subplots(len(traces), 1, sharex=True,
                                  figsize=size)
-    if len(traces) > 1:
-        axes = axes.ravel()
+        if len(traces) > 1:
+            axes = axes.ravel()
+    else:
+        normalize = True
+        fig, ax = plt.subplots(1, 1, figsize=size)
+        axes = [ax for _ in range(len(traces))]
+        if stack in ['linstack', 'PWS']:
+            axes.append(ax)
+
     traces = [(trace, trace.stats.starttime.datetime) for trace in traces]
     traces.sort(key=lambda tup: tup[1])
     traces = [trace[0] for trace in traces]
     # Plot the traces
     for i, tr in enumerate(traces):
         y = tr.data
+        if normalize:
+            y /= max(y)
         x = np.arange(len(y))
         x = x / tr.stats.sampling_rate  # convert to seconds
         if not stack:
@@ -808,27 +840,31 @@ def multi_trace_plot(traces, corr=True, stack='linstack', size=(7, 12),
     if stack in ['linstack', 'PWS']:
         tr = stacked[0]
         y = tr.data
+        if normalize:
+            y /= max(y)
         x = np.arange(len(y))
         x = x / tr.stats.sampling_rate
         axes[0].plot(x, y, 'r', linewidth=2.0)
-        axes[0].set_ylabel('Stack', rotation=0)
+        if not normalize:
+            axes[0].set_ylabel('Stack', rotation=0)
         axes[0].yaxis.set_ticks([])
-    for i, slave in enumerate(traces):
-        if corr:
-            cc = normxcorr2(tr.data, slave[0].data)
-        if not stack:
-            ind = i
-        else:
-            ind = i + 1
-        if corr:
-            axes[ind].set_ylabel('cc=' + str(round(np.max(cc), 2)), rotation=0)
-        axes[ind].text(0.9, 0.15, str(round(np.max(slave[0].data))),
-                       bbox=dict(facecolor='white', alpha=0.95),
-                       transform=axes[ind].transAxes)
-        axes[ind].text(0.7, 0.85, slave[0].stats.starttime.datetime.
-                       strftime('%Y/%m/%d %H:%M:%S'),
-                       bbox=dict(facecolor='white', alpha=0.95),
-                       transform=axes[ind].transAxes)
+    if subplots:
+        for i, slave in enumerate(traces):
+            if corr:
+                cc = normxcorr2(tr.data, slave[0].data)
+            if not stack:
+                ind = i
+            else:
+                ind = i + 1
+            if corr:
+                axes[ind].set_ylabel('cc=' + str(round(np.max(cc), 2)), rotation=0)
+            axes[ind].text(0.9, 0.15, str(round(np.max(slave[0].data))),
+                           bbox=dict(facecolor='white', alpha=0.95),
+                           transform=axes[ind].transAxes)
+            axes[ind].text(0.7, 0.85, slave[0].stats.starttime.datetime.
+                           strftime('%Y/%m/%d %H:%M:%S'),
+                           bbox=dict(facecolor='white', alpha=0.95),
+                           transform=axes[ind].transAxes)
     axes[-1].set_xlabel('Time (s)')
     if title:
         fig.suptitle(title)

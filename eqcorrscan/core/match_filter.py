@@ -3916,8 +3916,6 @@ def match_filter(template_names, template_list, st, threshold,
         calling custom xcorr function...
     """
     _spike_test(st)
-    import matplotlib
-    matplotlib.use('Agg')
     from eqcorrscan.utils.plotting import _match_filter_plot
     if arg_check:
         # Check the arguments to be nice - if arguments wrong type the parallel
