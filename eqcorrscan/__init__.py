@@ -92,6 +92,12 @@ class EQcorrscanRestructureAndLoad(object):
 
 sys.meta_path.append(EQcorrscanRestructureAndLoad())
 
+if sys.version_info[0] < 3:
+    warnings.warn(
+        "EQcorrscan will stop supporting Python 2 in a forthcoming release,"
+        "see https://github.com/eqcorrscan/EQcorrscan/issues/242 for progress",
+        EQcorrscanDeprecationWarning)
+
 if __name__ == '__main__':
     import doctest
 
