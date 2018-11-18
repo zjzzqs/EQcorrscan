@@ -459,7 +459,7 @@ def process(tr, lowcut, highcut, filt_order, samp_rate, debug,
     gappy = False
     if isinstance(tr.data, np.ma.MaskedArray):
         gappy = True
-        gaps, tr = _fill_gaps(tr)
+        gaps, tr = get_and_fill_gaps(tr)
     # Do a brute force quality check
     qual = _check_daylong(tr)
     if not qual:
@@ -571,14 +571,14 @@ def process(tr, lowcut, highcut, filt_order, samp_rate, debug,
                                  tr.stats.station + '.' + tr.stats.channel)
     # Replace the gaps with zeros
     if gappy:
-        tr = _zero_pad_gaps(tr, gaps, fill_gaps=fill_gaps)
+        tr = zero_pad_gaps(tr, gaps, fill_gaps=fill_gaps)
     # Final visual check for debug
     if debug > 4:
         tr.plot()
     return tr
 
 
-def _zero_pad_gaps(tr, gaps, fill_gaps=True):
+def zero_pad_gaps(tr, gaps, fill_gaps=True):
     """
     Replace padded parts of trace with zeros.
 
@@ -618,7 +618,7 @@ def _zero_pad_gaps(tr, gaps, fill_gaps=True):
     return tr
 
 
-def _fill_gaps(tr):
+def get_and_fill_gaps(tr):
     """
     Interpolate through gaps and work-out where gaps are.
 
