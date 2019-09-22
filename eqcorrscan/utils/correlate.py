@@ -745,9 +745,15 @@ def fftw_multi_normxcorr(template_array, stream_array, pad_array, seed_ids,
     rtype: np.ndarray, list
     :return: 3D Array of cross-correlations and list of used channels.
     """
-    utilslib = _load_cdll('libutils')
+    use_gpu = kwargs.get("gpu", False)
+    if use_gpu:
+        utilslib = _load_cdll("libutils_gpu")
+        func = utilslib.multi_normxcorr_cuda
+    else:
+        utilslib = _load_cdll('libutils')
+        func = utilslib.multi_normxcorr_fftw
 
-    utilslib.multi_normxcorr_fftw.argtypes = [
+    func.argtypes = [
         np.ctypeslib.ndpointer(dtype=np.float32,
                                flags=native_str('C_CONTIGUOUS')),
         ctypes.c_long, ctypes.c_long, ctypes.c_long,
@@ -767,7 +773,7 @@ def fftw_multi_normxcorr(template_array, stream_array, pad_array, seed_ids,
         np.ctypeslib.ndpointer(dtype=np.intc,
                                flags=native_str('C_CONTIGUOUS')),
         ctypes.c_int]
-    utilslib.multi_normxcorr_fftw.restype = ctypes.c_int
+    func.restype = ctypes.c_int
     '''
     Arguments are:
         templates (stacked [ch_1-t_1, ch_1-t_2, ..., ch_2-t_1, ch_2-t_2, ...])
@@ -785,7 +791,6 @@ def fftw_multi_normxcorr(template_array, stream_array, pad_array, seed_ids,
         missed correlation warnings (usually due to gaps)
         stack option
     '''
-
     # pre processing
     used_chans = []
     template_len = template_array[seed_ids[0]].shape[1]
@@ -841,7 +846,7 @@ def fftw_multi_normxcorr(template_array, stream_array, pad_array, seed_ids,
         np.zeros(n_channels), dtype=np.intc)
 
     # call C function
-    ret = utilslib.multi_normxcorr_fftw(
+    ret = func(
         template_array, n_templates, template_len, n_channels, stream_array,
         image_len, cccs, fft_len, used_chans_np, pad_array_np,
         cores_inner, variance_warnings, missed_correlations, int(stack))

@@ -20,7 +20,6 @@
 
 #include <libutils.h>
 
-
 static inline int set_ncc(
     long t, long i, int chan, int n_chans, long template_len, long image_len,
     float value, int *used_chans, int *pad_array, float *ncc, int stack_option);
@@ -723,7 +722,7 @@ int multi_normxcorr_fftw(float *templates, long n_templates, long template_len, 
     pb = fftwf_plan_dft_r2c_1d(fft_len, image_ext[0], outb[0], FFTW_ESTIMATE);
     px = fftwf_plan_dft_c2r_2d(n_templates, fft_len, out[0], ccc[0], FFTW_ESTIMATE);
 
-    /* loop over the channels */
+    /* loop over the channels: note that outer threading is disabled */
     /* #pragma omp parallel for num_threads(num_threads_outer) */
     for (i = 0; i < n_channels; ++i){
         int tid = 0; /* each thread has its own workspace */
@@ -733,8 +732,6 @@ int multi_normxcorr_fftw(float *templates, long n_templates, long template_len, 
         tid = omp_get_thread_num();
         #endif
         /* initialise memory to zero */
-        memset(template_ext[tid], 0, (size_t) fft_len * n_templates * sizeof(float));
-        // Done internally now. memset(image_ext[tid], 0, (size_t) fft_len * sizeof(float));
 
         if (stack_option == 1){
             chan = 0;
@@ -744,6 +741,8 @@ int multi_normxcorr_fftw(float *templates, long n_templates, long template_len, 
             n_chans = n_channels;
         }
         /* call the routine */
+         memset(template_ext[tid], 0, (size_t) fft_len * n_templates * sizeof(float));
+        // Done internally now. memset(image_ext[tid], 0, (size_t) fft_len * sizeof(float));
         results[i] = normxcorr_fftw_main(&templates[(size_t) n_templates * template_len * i], template_len,
                                  n_templates, &image[(size_t) image_len * i], image_len, chan, n_chans, ncc, fft_len,
                                  template_ext[tid], image_ext[tid], ccc[tid], outa[tid], outb[tid], out[tid],
