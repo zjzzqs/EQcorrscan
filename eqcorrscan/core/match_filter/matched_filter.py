@@ -682,6 +682,7 @@ def match_filter(template_names, template_list, st, threshold,
     Logger.debug(
         'This is from {0} templates correlated with {1} channels of '
         'data'.format(len(templates), len(stream)))
+    # check Abs Median of cccsums is > 0.05 or not, and then remove the median ofcccsums
     for i in range(cccsums.shape[0]):
         cccsums_i_median = np.median(cccsums[i])
         if np.abs(cccsums_i_median) > 0.05:
@@ -720,19 +721,21 @@ def match_filter(template_names, template_list, st, threshold,
             Logger.debug("Found {0} peaks for template {1}".format(
                 len(all_peaks[i]), _template_names[i]))
             for peak in all_peaks[i]:
-                detecttime = (
-                    stream[0].stats.starttime +
-                    peak[1] / stream[0].stats.sampling_rate)
-                detection = Detection(
-                    template_name=_template_names[i], detect_time=detecttime,
-                    no_chans=no_chans[i], detect_val=peak[0],
-                    threshold=thresholds[i], typeofdet='corr', chans=chans[i],
-                    threshold_type=threshold_type, threshold_input=threshold)
-                if output_cat or output_event:
-                    detection._calculate_event(template_st=templates[i])
-                detections.append(detection)
-                if output_cat:
-                    det_cat.append(detection.event)
+                # require the number of chans of each detection >= 6 (2 stations)
+                if no_chans[i] >= 6:
+                    detecttime = (
+                        stream[0].stats.starttime +
+                        peak[1] / stream[0].stats.sampling_rate)
+                    detection = Detection(
+                        template_name=_template_names[i], detect_time=detecttime,
+                        no_chans=no_chans[i], detect_val=peak[0],
+                        threshold=thresholds[i], typeofdet='corr', chans=chans[i],
+                        threshold_type=threshold_type, threshold_input=threshold)
+                    if output_cat or output_event:
+                        detection._calculate_event(template_st=templates[i])
+                    detections.append(detection)
+                    if output_cat:
+                        det_cat.append(detection.event)
         else:
             Logger.debug("Found 0 peaks for template {0}".format(
                 _template_names[i]))
