@@ -682,6 +682,11 @@ def match_filter(template_names, template_list, st, threshold,
     Logger.debug(
         'This is from {0} templates correlated with {1} channels of '
         'data'.format(len(templates), len(stream)))
+    for i in range(cccsums.shape[0]):
+        cccsums_i_median = np.median(cccsums[i])
+        if np.abs(cccsums_i_median) > 0.05:
+            Logger.warning('Abs Median of cccsums is > 0.05 at index: '+ str(i)+ ' !  Check this!')
+        cccsums[i]=cccsums[i]-cccsums_i_median
     detections = []
     if output_cat:
         det_cat = Catalog()
