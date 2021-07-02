@@ -93,7 +93,7 @@ class Detection(object):
         if event is not None:
             event.resource_id = self.id
         if self.typeofdet == 'corr':
-            assert abs(self.detect_val) <= self.no_chans
+            assert round(abs(self.detect_val)) <= self.no_chans
 
     def __repr__(self):
         """Simple print."""
