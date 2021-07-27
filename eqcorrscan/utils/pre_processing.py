@@ -843,11 +843,11 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
             'channel': chan, 'starttime': UTCDateTime(),
             'npts': template_length, 'sampling_rate': samp_rate}))
 
-    # Remove templates with number of matching channels < 6
+    # Remove templates with number of matching channels < 12 (2 stations for japan dataset)
     filt = np.ones(len(template_names)).astype(bool)
     for i, template in enumerate(templates):
         trace_ids = {tr.id for tr in template}
-        if len(trace_ids.intersection(stream_ids)) < 6:
+        if len(trace_ids.intersection(stream_ids)) < 12:
             filt[i] = 0
 
     _out = dict(zip(
