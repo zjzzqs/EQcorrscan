@@ -737,8 +737,8 @@ def match_filter(template_names, template_list, st, threshold,
             Logger.debug("Found {0} peaks for template {1}".format(
                 len(all_peaks[i]), _template_names[i]))
             for peak in all_peaks[i]:
-                # require the number of chans of each detection >= 6 (2 stations)
-                if no_chans[i] >= 6:
+                # require the number of chans of each detection >= 12 (2 stations)
+                if no_chans[i] >= 12:
                     detecttime = (
                         stream[0].stats.starttime +
                         peak[1] / stream[0].stats.sampling_rate)
