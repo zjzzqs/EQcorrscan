@@ -763,8 +763,8 @@ def _template_gen(picks, st, length, swin='all', prepick=0.05,
                     continue
                 starttime.update({'picks': p_pick})
             elif _swin == 'S':
-                if tr.stats.channel[-1] in ['Z', 'U']:
-                    continue
+                # if tr.stats.channel[-1] in ['Z', 'U']:
+                    # continue
                 s_pick = [pick for pick in station_picks
                           if pick.phase_hint.upper()[0] == 'S']
                 if not all_horiz:
