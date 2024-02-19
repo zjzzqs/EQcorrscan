@@ -24,7 +24,7 @@ import os
 from obspy import Stream, read, Trace, UTCDateTime, read_events
 from obspy.core.event import Catalog
 from obspy.clients.fdsn import Client as FDSNClient
-from obspy.clients.seishub import Client as SeisHubClient
+#from obspy.clients.seishub import Client as SeisHubClient
 
 from eqcorrscan.utils.sac_util import sactoevent
 from eqcorrscan.utils import pre_processing

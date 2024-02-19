@@ -20,7 +20,7 @@ import fnmatch
 
 from obspy import read, UTCDateTime, Stream
 from obspy.clients.fdsn.header import FDSNException
-from obspy.clients.seishub import Client as SeishubClient
+#from obspy.clients.seishub import Client as SeishubClient
 from obspy.clients.fdsn import Client as FDSNClient
 from obspy.clients.filesystem.sds import Client as SDSClient
 
