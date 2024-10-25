@@ -11,6 +11,7 @@ with data and output the detections.
     GNU Lesser General Public License, Version 3
     (https://www.gnu.org/copyleft/lesser.html)
 """
+
 import ast
 import copy
 import os
@@ -19,10 +20,17 @@ import logging
 import numpy as np
 from obspy import Catalog, UTCDateTime, Stream
 from obspy.core.event import (
-    Comment, WaveformStreamID, Event, Pick, CreationInfo, ResourceIdentifier,
-    Origin)
+    Comment,
+    WaveformStreamID,
+    Event,
+    Pick,
+    CreationInfo,
+    ResourceIdentifier,
+    Origin,
+)
 
 from eqcorrscan.core.match_filter.helpers import _test_event_similarity
+from eqcorrscan.utils.pre_processing import _stream_quick_select
 
 Logger = logging.getLogger(__name__)
 
@@ -68,9 +76,23 @@ class Detection(object):
     :param id: Identification for detection (should be unique).
     """
 
-    def __init__(self, template_name, detect_time, no_chans, detect_val,
-                 threshold, typeofdet, threshold_type, threshold_input,
-                 chans=None, event=None, id=None):
+    _precision = 1e-5  # Used for warning about out of range correlations
+
+    def __init__(
+        self,
+        template_name,
+        detect_time,
+        no_chans,
+        detect_val,
+        threshold,
+        typeofdet,
+        threshold_type,
+        threshold_input,
+        chans=None,
+        event=None,
+        id=None,
+        strict=True,
+    ):
         """Main class of Detection."""
         self.template_name = template_name
         self.detect_time = detect_time
@@ -88,43 +110,76 @@ class Detection(object):
         if id is not None:
             self.id = id
         else:
-            self.id = (''.join(template_name.split(' ')) + '_' +
-                       detect_time.strftime('%Y%m%d_%H%M%S%f'))
+            self.id = (
+                "".join(template_name.split(" "))
+                + "_"
+                + detect_time.strftime("%Y%m%d_%H%M%S%f")
+            )
         if event is not None:
             event.resource_id = self.id
-        if self.typeofdet == 'corr':
-            assert round(abs(self.detect_val)) <= self.no_chans
+        if self.typeofdet == "corr":
+            if abs(self.detect_val) > self.no_chans * (1 + self._precision):
+                msg = (
+                    f"Correlation detection at {self.detect_val} exceeds "
+                    f"boundedness ({self.no_chans}"
+                )
+                if strict:
+                    raise OverflowError(msg)
+                else:
+                    Logger.error(msg)
 
     def __repr__(self):
         """Simple print."""
-        print_str = ' '.join(
-            ['template name =', self.template_name, '\n',
-             'detection id =', self.id, '\n',
-             'detection time =', str(self.detect_time), '\n',
-             'number of channels =', str(self.no_chans), '\n',
-             'channels =', str(self.chans), '\n',
-             'detection value =', str(self.detect_val), '\n',
-             'threshold =', str(self.threshold), '\n',
-             'threshold type =', self.threshold_type, '\n',
-             'input threshold =', str(self.threshold_input), '\n',
-             'detection type =', str(self.typeofdet)])
+        print_str = " ".join(
+            [
+                "template name =",
+                self.template_name,
+                "\n",
+                "detection id =",
+                self.id,
+                "\n",
+                "detection time =",
+                str(self.detect_time),
+                "\n",
+                "number of channels =",
+                str(self.no_chans),
+                "\n",
+                "channels =",
+                str(self.chans),
+                "\n",
+                "detection value =",
+                str(self.detect_val),
+                "\n",
+                "threshold =",
+                str(self.threshold),
+                "\n",
+                "threshold type =",
+                self.threshold_type,
+                "\n",
+                "input threshold =",
+                str(self.threshold_input),
+                "\n",
+                "detection type =",
+                str(self.typeofdet),
+            ]
+        )
         return "Detection(" + print_str + ")"
 
     def __str__(self):
         """Full print."""
-        return (
-            "Detection on template: {0} at: {1} with {2} channels: {3}".format(
-                self.template_name, self.detect_time, self.no_chans,
-                self.chans))
+        return "Detection on template: {0} at: {1} with {2} channels: {3}".format(
+            self.template_name, self.detect_time, self.no_chans, self.chans
+        )
 
     def __eq__(self, other, verbose=False):
         for key in self.__dict__.keys():
             self_is_event = isinstance(self.event, Event)
             other_is_event = isinstance(other.event, Event)
-            if key == 'event':
+            if key == "event":
                 if self_is_event and other_is_event:
                     if not _test_event_similarity(
-                            self.event, other.event, verbose=verbose):
+                        self.event, other.event, verbose=verbose
+                    ):
                         return False
                 elif self_is_event and not other_is_event:
                     return False
@@ -152,21 +207,21 @@ class Detection(object):
     def __ge__(self, other):
         return not self.__lt__(other)
 
-    def __hash__(self):
-        """
-        Cannot hash Detection objects, they may change.
-        :return: 0
-        """
-        return 0
-
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def _print_str(self):
         return "{0}; {1}; {2}; {3}; {4}; {5}; {6}; {7}; {8}".format(
-            self.template_name, self.detect_time, self.no_chans,
-            self.chans, self.detect_val, self.threshold,
-            self.threshold_type, self.threshold_input, self.typeofdet)
+            self.template_name,
+            self.detect_time,
+            self.no_chans,
+            self.chans,
+            self.detect_val,
+            self.threshold,
+            self.threshold_type,
+            self.threshold_input,
+            self.typeofdet,
+        )
 
     def copy(self):
         """
@@ -190,20 +245,34 @@ class Detection(object):
             exist, will create new file and warn.  If False will overwrite
             old files.
         """
-        mode = 'w'
+        mode = "w"
         if append and os.path.isfile(fname):
-            mode = 'a'
-        header = '; '.join([
-            'Template name', 'Detection time (UTC)', 'Number of channels',
-            'Channel list', 'Detection value', 'Threshold', 'Threshold type',
-            'Input threshold', 'Detection type'])
+            mode = "a"
+        header = "; ".join(
+            [
+                "Template name",
+                "Detection time (UTC)",
+                "Number of channels",
+                "Channel list",
+                "Detection value",
+                "Threshold",
+                "Threshold type",
+                "Input threshold",
+                "Detection type",
+            ]
+        )
         with open(fname, mode) as _f:
             if mode == "w":
-                _f.write(header + '\n')  # Write a header for the file
-            _f.write(self._print_str() + '\n')
+                _f.write(header + "\n")  # Write a header for the file
+            _f.write(self._print_str() + "\n")
 
-    def _calculate_event(self, template=None, template_st=None,
-                         estimate_origin=True, correct_prepick=True):
+    def _calculate_event(
+        self,
+        template=None,
+        template_st=None,
+        estimate_origin=True,
+        correct_prepick=True,
+    ):
         """
         Calculate an event for this detection using a given template.
 
@@ -227,28 +296,35 @@ class Detection(object):
             Corrects for prepick if template given.
         """
         if template is not None and template.name != self.template_name:
-            Logger.info("Template names do not match: {0}: {1}".format(
-                template.name, self.template_name))
+            Logger.info(
+                "Template names do not match: {0}: {1}".format(
+                    template.name, self.template_name
+                )
+            )
             return
         # Detect time must be valid QuakeML uri within resource_id.
         # This will write a formatted string which is still
         # readable by UTCDateTime
-        det_time = str(self.detect_time.strftime('%Y%m%dT%H%M%S.%f'))
-        ev = Event(resource_id=ResourceIdentifier(
-            id=self.template_name + '_' + det_time,
-            prefix='smi:local'))
+        det_time = str(self.detect_time.strftime("%Y%m%dT%H%M%S.%f"))
+        ev = Event(
+            resource_id=ResourceIdentifier(
+                id=self.template_name + "_" + det_time, prefix="smi:local"
+            )
+        )
         ev.creation_info = CreationInfo(
-            author='EQcorrscan', creation_time=UTCDateTime())
-        ev.comments.append(
-            Comment(text="Template: {0}".format(self.template_name)))
-        ev.comments.append(
-            Comment(text='threshold={0}'.format(self.threshold)))
-        ev.comments.append(
-            Comment(text='detect_val={0}'.format(self.detect_val)))
+            author="EQcorrscan", creation_time=UTCDateTime()
+        )
+        ev.comments.append(Comment(text="Template: {0}".format(self.template_name)))
+        ev.comments.append(Comment(text="threshold={0}".format(self.threshold)))
+        ev.comments.append(Comment(text="detect_val={0}".format(self.detect_val)))
         if self.chans is not None:
             ev.comments.append(
-                Comment(text='channels used: {0}'.format(
-                    ' '.join([str(pair) for pair in self.chans]))))
+                Comment(
+                    text="channels used: {0}".format(
+                        " ".join([str(pair) for pair in self.chans])
+                    )
+                )
+            )
         if template is not None:
             template_st = template.st
             if correct_prepick:
@@ -262,60 +338,67 @@ class Detection(object):
         else:
             template_prepick = 0
             template_picks = []
-        min_template_tm = min(
-            [tr.stats.starttime for tr in template_st])
+        min_template_tm = min([tr.stats.starttime for tr in template_st])
         for tr in template_st:
-            if (tr.stats.station, tr.stats.channel) \
-                    not in self.chans:
+            if (tr.stats.station, tr.stats.channel) not in self.chans:
                 continue
             elif tr.stats.__contains__("not_in_original"):
                 continue
             elif np.all(np.isnan(tr.data)):
                 continue  # The channel contains no data and was not used.
             else:
-                pick_time = self.detect_time + (
-                    tr.stats.starttime - min_template_tm)
+                pick_time = self.detect_time + (tr.stats.starttime - min_template_tm)
                 pick_time += template_prepick
                 new_pick = Pick(
-                    time=pick_time, waveform_id=WaveformStreamID(
+                    time=pick_time,
+                    waveform_id=WaveformStreamID(
                         network_code=tr.stats.network,
                         station_code=tr.stats.station,
                         channel_code=tr.stats.channel,
-                        location_code=tr.stats.location))
-                template_pick = [p for p in template_picks
-                                 if p.waveform_id.get_seed_string() ==
-                                 new_pick.waveform_id.get_seed_string()]
+                        location_code=tr.stats.location,
+                    ),
+                )
+                template_pick = [
+                    p
+                    for p in template_picks
+                    if p.waveform_id.get_seed_string()
+                    == new_pick.waveform_id.get_seed_string()
+                ]
                 if len(template_pick) == 0:
                     new_pick.phase_hint = None
                 elif len(template_pick) == 1:
                     new_pick.phase_hint = template_pick[0].phase_hint
                 else:
                     # Multiple picks for this trace in template
-                    similar_traces = template_st.select(id=tr.id)
+                    # similar_traces = template_st.select(id=tr.id)
+                    similar_traces = _stream_quick_select(template_st, tr.id)
                     similar_traces.sort()
                     _index = similar_traces.traces.index(tr)
                     try:
                         new_pick.phase_hint = sorted(
-                            template_pick,
-                            key=lambda p: p.time)[_index].phase_hint
+                            template_pick, key=lambda p: p.time
+                        )[_index].phase_hint
                     except IndexError:
                         Logger.error(f"No pick for trace: {tr.id}")
                 ev.picks.append(new_pick)
-        if estimate_origin and template is not None\
-                and template.event is not None:
+        if estimate_origin and template is not None and template.event is not None:
             try:
-                template_origin = (template.event.preferred_origin() or
-                                   template.event.origins[0])
+                template_origin = (
+                    template.event.preferred_origin() or template.event.origins[0]
+                )
             except IndexError:
                 template_origin = None
             if template_origin:
                 for pick in ev.picks:
                     comparison_pick = [
-                        p for p in template.event.picks
-                        if p.waveform_id.get_seed_string() ==
-                        pick.waveform_id.get_seed_string()]
-                    comparison_pick = [p for p in comparison_pick
-                                       if p.phase_hint == pick.phase_hint]
+                        p
+                        for p in template.event.picks
+                        if p.waveform_id.get_seed_string()
+                        == pick.waveform_id.get_seed_string()
+                    ]
+                    comparison_pick = [
+                        p for p in comparison_pick if p.phase_hint == pick.phase_hint
+                    ]
                     if len(comparison_pick) > 0:
                         break
                 else:
@@ -323,18 +406,26 @@ class Detection(object):
                     self.event = ev
                     return
                 origin_time = pick.time - (
-                        comparison_pick[0].time - template_origin.time)
+                    comparison_pick[0].time - template_origin.time
+                )
                 # Calculate based on difference between pick and origin?
-                _origin = Origin(ResourceIdentifier(
-                    id="EQcorrscan/{0}_{1}".format(
-                        self.template_name, det_time), prefix="smi:local"),
-                    time=origin_time, evaluation_mode="automatic",
+                _origin = Origin(
+                    ResourceIdentifier(
+                        id="EQcorrscan/{0}_{1}".format(self.template_name, det_time),
+                        prefix="smi:local",
+                    ),
+                    time=origin_time,
+                    evaluation_mode="automatic",
                     evaluation_status="preliminary",
                     creation_info=CreationInfo(
-                        author='EQcorrscan', creation_time=UTCDateTime()),
-                    comments=[Comment(
-                        text="Origin automatically assigned based on template"
-                             " origin: use with caution.")],
+                        author="EQcorrscan", creation_time=UTCDateTime()
+                    ),
+                    comments=[
+                        Comment(
+                            text="Origin automatically assigned based on template"
+                            " origin: use with caution."
+                        )
+                    ],
                     latitude=template_origin.latitude,
                     longitude=template_origin.longitude,
                     depth=template_origin.depth,
@@ -350,12 +441,22 @@ class Detection(object):
                     earth_model_id=template_origin.earth_model_id,
                     origin_type=template_origin.origin_type,
                     origin_uncertainty=template_origin.origin_uncertainty,
-                    region=template_origin.region)
+                    region=template_origin.region,
+                )
                 ev.origins = [_origin]
         self.event = ev
         return self
 
-    def extract_stream(self, stream, length, prepick):
+    def extract_stream(
+        self,
+        stream,
+        length,
+        prepick,
+        all_vert=False,
+        all_horiz=False,
+        vertical_chans=["Z"],
+        horizontal_chans=["E", "N", "1", "2"],
+    ):
         """
         Extract a cut stream of a given length around the detection.
 
@@ -370,25 +471,43 @@ class Detection(object):
 
         :rtype: `obspy.core.stream.Stream`
         """
-        assert self.event, "Detection must have an event - use Detection._" \
-                           "calculate_event()"
+        assert self.event, (
+            "Detection must have an event - use Detection._" "calculate_event()"
+        )
         cut_stream = Stream()
         valid_chans = {
-            (tr.stats.station, tr.stats.channel)
-            for tr in stream}.intersection(set(self.chans))
+            (tr.stats.station, tr.stats.channel) for tr in stream
+        }.intersection(set(self.chans))
         for station, channel in valid_chans:
             _st = stream.select(station=station, channel=channel)
             pick = [
-                p for p in self.event.picks
-                if p.waveform_id.station_code == station and
-                p.waveform_id.channel_code == channel]
+                p
+                for p in self.event.picks
+                if p.waveform_id.station_code == station
+                and p.waveform_id.channel_code[0:-1] == channel[0:-1]
+            ]
+            # Allow picks to be transferred to other vertical/horizontal chans
+            if all_vert and channel[-1] in vertical_chans:
+                pick = [
+                    p for p in pick if p.waveform_id.channel_code[-1] in vertical_chans
+                ]
+            elif all_horiz and channel[-1] in horizontal_chans:
+                pick = [
+                    p
+                    for p in pick
+                    if p.waveform_id.channel_code[-1] in horizontal_chans
+                ]
+            else:
+                pick = [p for p in pick if p.waveform_id.channel_code == channel]
             if len(pick) == 0:
                 Logger.info("No pick for {0}.{1}".format(station, channel))
                 continue
             elif len(pick) > 1:
                 Logger.info(
                     "Multiple picks found for {0}.{1}, using earliest".format(
-                        station, channel))
+                        station, channel
+                    )
+                )
                 pick.sort(key=lambda p: p.time)
             pick = pick[0]
             cut_start = pick.time - prepick
@@ -396,16 +515,17 @@ class Detection(object):
             _st = _st.slice(starttime=cut_start, endtime=cut_end).copy()
             # Minimum length check
             for tr in _st:
-                if abs((tr.stats.endtime - tr.stats.starttime) -
-                       length) < tr.stats.delta:
+                if (
+                    abs((tr.stats.endtime - tr.stats.starttime) - length)
+                    < tr.stats.delta
+                ):
                     cut_stream += tr
                 else:
-                    Logger.info(
-                        "Insufficient data length for {0}".format(tr.id))
+                    Logger.info("Insufficient data length for {0}".format(tr.id))
         return cut_stream
 
 
-def write_detections(detections, fname, mode='a'):
+def write_detections(detections, fname, mode="a"):
     """
     Write a list of detections to a file.
 
@@ -419,10 +539,21 @@ def write_detections(detections, fname, mode='a'):
     assert mode in {"a", "w"}
     lines = []
     if mode == "w" or not os.path.isfile(fname):
-        lines.append('; '.join([
-            'Template name', 'Detection time (UTC)', 'Number of channels',
-            'Channel list', 'Detection value', 'Threshold', 'Threshold type',
-            'Input threshold', 'Detection type']))
+        lines.append(
+            "; ".join(
+                [
+                    "Template name",
+                    "Detection time (UTC)",
+                    "Number of channels",
+                    "Channel list",
+                    "Detection value",
+                    "Threshold",
+                    "Threshold type",
+                    "Input threshold",
+                    "Detection type",
+                ]
+            )
+        )
     lines.extend([d._print_str() for d in detections])
     lines = "\n".join(lines)
     lines += "\n"
@@ -451,24 +582,31 @@ def read_detections(fname, encoding="UTF8"):
         lines = _f.read().decode(encoding).splitlines()
     detections = []
     for index, line in enumerate(lines):
-        if line.rstrip().split('; ')[0] == 'Template name':
+        if line.rstrip().split("; ")[0] == "Template name":
             continue  # Skip any repeated headers
-        detection = line.rstrip().split('; ')
+        detection = line.rstrip().split("; ")
         detection[1] = UTCDateTime(detection[1])
         detection[2] = int(float(detection[2]))
         detection[3] = ast.literal_eval(detection[3])
         detection[4] = float(detection[4])
         detection[5] = float(detection[5])
         if len(detection) < 9:
-            detection.extend(['Unset', float('NaN')])
+            detection.extend(["Unset", float("NaN")])
         else:
             detection[7] = float(detection[7])
-        detections.append(Detection(
-            template_name=detection[0], detect_time=detection[1],
-            no_chans=detection[2], detect_val=detection[4],
-            threshold=detection[5], threshold_type=detection[6],
-            threshold_input=detection[7], typeofdet=detection[8],
-            chans=detection[3]))
+        detections.append(
+            Detection(
+                template_name=detection[0],
+                detect_time=detection[1],
+                no_chans=detection[2],
+                detect_val=detection[4],
+                threshold=detection[5],
+                threshold_type=detection[6],
+                threshold_input=detection[7],
+                typeofdet=detection[8],
+                chans=detection[3],
+            )
+        )
     return detections
 
 

@@ -70,7 +70,7 @@ def _finalise_figure(fig, **kwargs):  # pragma: no cover
     show = kwargs.get("show", True)
     save = kwargs.get("save", False)
     savefile = kwargs.get("savefile", "EQcorrscan_figure.png")
-    return_fig = kwargs.get("return_figure", False)
+    return_figure = kwargs.get("return_figure", False)
     size = kwargs.get("size", (10.5, 7.5))
     fig.set_size_inches(size)
     if title:
@@ -80,7 +80,7 @@ def _finalise_figure(fig, **kwargs):  # pragma: no cover
         Logger.info("Saved figure to {0}".format(savefile))
     if show:
         plt.show(block=True)
-    if return_fig:
+    if return_figure:
         return fig
     fig.clf()
     plt.close(fig)
@@ -321,10 +321,10 @@ def peaks_plot(data, starttime, samp_rate, peaks=None, **kwargs):
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     ax1.plot(t, data, 'k')
-    ax1.scatter(peaks[0][1] / (samp_rate * 3600), abs(peaks[0][0]),
+    ax1.scatter(peaks[0][1] / (samp_rate * 3600), peaks[0][0],
                 color='r', label='Peaks')
     for peak in peaks:
-        ax1.scatter(peak[1] / (samp_rate * 3600), abs(peak[0]), color='r')
+        ax1.scatter(peak[1] / (samp_rate * 3600), peak[0], color='r')
     ax1.legend()
     ax1.set_xlabel("Time after %s [hr]" % starttime.isoformat())
     ax1.axis('tight')
@@ -1274,7 +1274,7 @@ def noise_plot(signal, noise, normalise=False, **kwargs):
     axes[-2].set_xlabel("Frequency (Hz)")
     axes[0].set_title("Spectra")
     axes[1].set_title("Signal - noise")
-    fig.legend(lines, labels, 'upper left')
+    fig.legend(lines, labels, loc='upper left')
     fig.subplots_adjust(hspace=0, top=0.91)
     fig = _finalise_figure(fig=fig, **kwargs)  # pragma: no cover
     return fig
@@ -1954,7 +1954,6 @@ def spec_trace(traces, cmap=None, wlen=0.4, log=False, trc='k', tralpha=0.9,
             ax = fig.add_subplot(len(traces), 1, i + 1, sharex=ax)
         ax1, ax2 = _spec_trace(tr, cmap=cmap, wlen=wlen, log=log, trc=trc,
                                tralpha=tralpha, axes=ax)
-        ax.set_yticks([])
         if i < len(traces) - 1:
             plt.setp(ax1.get_xticklabels(), visible=False)
         if isinstance(traces, list):

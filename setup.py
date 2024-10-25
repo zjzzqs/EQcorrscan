@@ -2,10 +2,12 @@ try:
     # use setuptools if we can
     from setuptools import setup, Command, Extension
     from setuptools.command.build_ext import build_ext
+
     using_setuptools = True
 except ImportError:
     from distutils.core import setup, Command, Extension
     from distutils.command.build_ext import build_ext
+
     using_setuptools = False
 
 from distutils import sysconfig
@@ -18,24 +20,23 @@ import shutil
 import glob
 
 with open("eqcorrscan/__init__.py", "r") as init_file:
-    version_line = [line for line in init_file
-                    if '__version__' in line][0]
+    version_line = [line for line in init_file if "__version__" in line][0]
 VERSION = version_line.split()[-1].split("'")[1]
 
 # Check if we are on RTD and don't build extensions if we are.
-READ_THE_DOCS = os.environ.get('READTHEDOCS', None) == 'True'
+READ_THE_DOCS = os.environ.get("READTHEDOCS", None) == "True"
 
-long_description = '''
+long_description = """
 EQcorrscan: repeating and near-repeating earthquake detection and analysis
 in Python.  Open-source routines for: systematic template
 creation, matched-filter detection, subspace detection, brightness detection,
 clustering of seismic events, magnitude calculation by singular value
 decomposition, and more!
-'''
+"""
 
 # Get a list of all the scripts not to be installed
-scriptfiles = glob.glob('eqcorrscan/tutorials/*.py')
-scriptfiles += glob.glob('eqcorrscan/scripts/*.py')
+scriptfiles = glob.glob("eqcorrscan/tutorials/*.py")
+scriptfiles += glob.glob("eqcorrscan/scripts/*.py")
 
 if READ_THE_DOCS:
     try:
@@ -57,9 +58,12 @@ def get_package_data():
 
     package_data = {}
 
-    if get_build_platform() in ('win32', 'win-amd64'):
-        package_data['eqcorrscan.utils.lib'] = [
-            'libfftw3-3.dll', 'libfftw3f-3.dll', 'libfftw3l-3.dll']
+    if get_build_platform() in ("win32", "win-amd64"):
+        package_data["eqcorrscan.utils.lib"] = [
+            "libfftw3-3.dll",
+            "libfftw3f-3.dll",
+            "libfftw3l-3.dll",
+        ]
 
     return package_data
 
@@ -68,9 +72,8 @@ def get_package_dir():
     from pkg_resources import get_build_platform
 
     package_dir = {}
-    if get_build_platform() in ('win32', 'win-amd64'):
-        package_dir['eqcorrscan.utils.lib'] = os.path.join(
-            'eqcorrscan', 'utils', 'lib')
+    if get_build_platform() in ("win32", "win-amd64"):
+        package_dir["eqcorrscan.utils.lib"] = os.path.join("eqcorrscan", "utils", "lib")
 
     return package_dir
 
@@ -79,17 +82,19 @@ def get_include_dirs():
     import numpy
     from pkg_resources import get_build_platform
 
-    include_dirs = [os.path.join(os.getcwd(), 'include'),
-                    os.path.join(os.getcwd(), 'eqcorrscan', 'utils', 'src'),
-                    numpy.get_include(),
-                    os.path.join(sys.prefix, 'include')]
+    include_dirs = [
+        os.path.join(os.getcwd(), "include"),
+        os.path.join(os.getcwd(), "eqcorrscan", "utils", "src"),
+        numpy.get_include(),
+        os.path.join(sys.prefix, "include"),
+    ]
 
-    if get_build_platform() in ('win32', 'win-amd64'):
+    if get_build_platform() in ("win32", "win-amd64"):
         # Add the Library dir
-        include_dirs.append(os.path.join(sys.prefix, 'Library', 'include'))
+        include_dirs.append(os.path.join(sys.prefix, "Library", "include"))
 
-    if get_build_platform().startswith('freebsd'):
-        include_dirs.append('/usr/local/include')
+    if get_build_platform().startswith("freebsd"):
+        include_dirs.append("/usr/local/include")
 
     return include_dirs
 
@@ -98,15 +103,14 @@ def get_library_dirs():
     from pkg_resources import get_build_platform
 
     library_dirs = []
-    if get_build_platform() in ('win32', 'win-amd64'):
-        library_dirs.append(os.path.join(os.getcwd(), 'eqcorrscan', 'utils',
-                                         'lib'))
-        library_dirs.append(os.path.join(sys.prefix, 'lib'))
-        library_dirs.append(os.path.join(sys.prefix, 'Library', 'lib'))
+    if get_build_platform() in ("win32", "win-amd64"):
+        library_dirs.append(os.path.join(os.getcwd(), "eqcorrscan", "utils", "lib"))
+        library_dirs.append(os.path.join(sys.prefix, "lib"))
+        library_dirs.append(os.path.join(sys.prefix, "Library", "lib"))
 
-    library_dirs.append(os.path.join(sys.prefix, 'lib'))
-    if get_build_platform().startswith('freebsd'):
-        library_dirs.append('/usr/local/lib')
+    library_dirs.append(os.path.join(sys.prefix, "lib"))
+    if get_build_platform().startswith("freebsd"):
+        library_dirs.append("/usr/local/lib")
 
     return library_dirs
 
@@ -116,7 +120,7 @@ def get_mkl():
 
     mkl_found = False
     # TODO: not sure about windows so ignoring for now
-    if not get_build_platform() in ('win32', 'win-amd64'):
+    if not get_build_platform() in ("win32", "win-amd64"):
         # look for MKL
         mklroot = os.getenv("MKLROOT")
         if mklroot is not None and os.path.isdir(mklroot):
@@ -134,8 +138,7 @@ def get_mkl():
                 mkl_libdir = [_libdir]
 
                 # look for include
-                if os.path.exists(os.path.join(mklroot, "include", "fftw",
-                                               "fftw3.h")):
+                if os.path.exists(os.path.join(mklroot, "include", "fftw", "fftw3.h")):
                     mkl_inc = [os.path.join(mklroot, "include", "fftw")]
                     mkl_found = True
 
@@ -153,12 +156,12 @@ def get_mkl():
                     mkl_libdir = [os.path.join(conda, "lib")]
 
                     # look for include too
-                    if os.path.exists(os.path.join(conda, "include", "fftw",
-                                                   "fftw3.h")):
+                    if os.path.exists(
+                        os.path.join(conda, "include", "fftw", "fftw3.h")
+                    ):
                         mkl_inc = [os.path.join(conda, "include", "fftw")]
                         mkl_found = True
-                    elif os.path.exists(os.path.join(conda, "include",
-                                                     "fftw3.h")):
+                    elif os.path.exists(os.path.join(conda, "include", "fftw3.h")):
                         mkl_inc = [os.path.join(conda, "include")]
                         mkl_found = True
     if mkl_found:
@@ -174,11 +177,11 @@ def get_mkl():
 def get_libraries():
     from pkg_resources import get_build_platform
 
-    if get_build_platform() in ('win32', 'win-amd64'):
+    if get_build_platform() in ("win32", "win-amd64"):
         # libraries = ['libfftw3-3', 'libfftw3f-3']
-        libraries = ['fftw3', 'fftw3f']
+        libraries = ["fftw3", "fftw3f"]
     else:
-        libraries = ['fftw3', 'fftw3_threads', 'fftw3f', 'fftw3f_threads']
+        libraries = ["fftw3", "fftw3_threads", "fftw3f", "fftw3f_threads"]
 
     return libraries
 
@@ -187,8 +190,8 @@ def export_symbols(*path):
     """
     Required for windows systems - functions defined in libutils.def.
     """
-    lines = open(os.path.join(*path), 'r').readlines()[2:]
-    return [s.strip() for s in lines if s.strip() != '']
+    lines = open(os.path.join(*path), "r").readlines()[2:]
+    return [s.strip() for s in lines if s.strip() != ""]
 
 
 def get_extensions(no_mkl=False):
@@ -197,69 +200,73 @@ def get_extensions(no_mkl=False):
     if READ_THE_DOCS:
         return []
     # will use static linking if STATIC_FFTW_DIR defined
-    static_fftw_path = os.environ.get('STATIC_FFTW_DIR', None)
+    static_fftw_path = os.environ.get("STATIC_FFTW_DIR", None)
     link_static_fftw = static_fftw_path is not None
 
     common_extension_args = {
-        'include_dirs': get_include_dirs(),
-        'library_dirs': get_library_dirs()}
+        "include_dirs": get_include_dirs(),
+        "library_dirs": get_library_dirs(),
+    }
 
-    sources = [os.path.join('eqcorrscan', 'utils', 'src', 'multi_corr.c'),
-               os.path.join('eqcorrscan', 'utils', 'src', 'time_corr.c'),
-               os.path.join('eqcorrscan', 'utils', 'src', 'find_peaks.c'),
-               os.path.join('eqcorrscan', 'utils', 'src',
-                            'distance_cluster.c')]
+    sources = [
+        os.path.join("eqcorrscan", "utils", "src", "multi_corr.c"),
+        os.path.join("eqcorrscan", "utils", "src", "time_corr.c"),
+        os.path.join("eqcorrscan", "utils", "src", "find_peaks.c"),
+        os.path.join("eqcorrscan", "utils", "src", "distance_cluster.c"),
+    ]
     exp_symbols = export_symbols("eqcorrscan/utils/src/libutils.def")
 
-    if get_build_platform() not in ('win32', 'win-amd64'):
-        if get_build_platform().startswith('freebsd'):
+    if get_build_platform() not in ("win32", "win-amd64"):
+        if get_build_platform().startswith("freebsd"):
             # Clang uses libomp, not libgomp
-            extra_link_args = ['-lm', '-lomp']
+            extra_link_args = ["-lm", "-lomp"]
         else:
-            extra_link_args = ['-lm', '-lgomp']
-        extra_compile_args = ['-fopenmp']
-        if all(arch not in get_build_platform()
-               for arch in ['arm', 'aarch']):
-            extra_compile_args.extend(['-msse2', '-ftree-vectorize'])
+            extra_link_args = ["-lm", "-lgomp"]
+        extra_compile_args = ["-fopenmp"]
+        if all(arch not in get_build_platform() for arch in ["arm", "aarch"]):
+            extra_compile_args.extend(["-msse2", "-ftree-vectorize"])
     else:
         extra_link_args = []
-        extra_compile_args = ['/openmp', '/TP']
+        extra_compile_args = ["/openmp", "/TP"]
 
     libraries = get_libraries()
     if link_static_fftw:
-        if get_build_platform() in ('win32', 'win-amd64'):
-            lib_pre = ''
-            lib_ext = '.lib'
+        if get_build_platform() in ("win32", "win-amd64"):
+            lib_pre = ""
+            lib_ext = ".lib"
         else:
-            lib_pre = 'lib'
-            lib_ext = '.a'
+            lib_pre = "lib"
+            lib_ext = ".a"
         for lib in libraries:
             extra_link_args.append(
-                os.path.join(static_fftw_path, lib_pre + lib + lib_ext))
+                os.path.join(static_fftw_path, lib_pre + lib + lib_ext)
+            )
 
-        common_extension_args['extra_link_args'] = extra_link_args
-        common_extension_args['libraries'] = []
-        common_extension_args['extra_compile_args'] = extra_compile_args
-        common_extension_args['export_symbols'] = exp_symbols
+        common_extension_args["extra_link_args"] = extra_link_args
+        common_extension_args["libraries"] = []
+        common_extension_args["extra_compile_args"] = extra_compile_args
+        common_extension_args["export_symbols"] = exp_symbols
     else:
         # otherwise we use dynamic libraries
-        common_extension_args['extra_link_args'] = extra_link_args
-        common_extension_args['extra_compile_args'] = extra_compile_args
-        common_extension_args['export_symbols'] = exp_symbols
+        common_extension_args["extra_link_args"] = extra_link_args
+        common_extension_args["extra_compile_args"] = extra_compile_args
+        common_extension_args["export_symbols"] = exp_symbols
         if no_mkl:
             mkl = None
         else:
             mkl = get_mkl()
         if mkl is not None:
             # use MKL if we have it
-            common_extension_args['include_dirs'].extend(mkl[0])
-            common_extension_args['library_dirs'].extend(mkl[1])
-            common_extension_args['libraries'] = mkl[2]
+            common_extension_args["include_dirs"].extend(mkl[0])
+            common_extension_args["library_dirs"].extend(mkl[1])
+            common_extension_args["libraries"] = mkl[2]
         else:
-            common_extension_args['libraries'] = libraries
+            common_extension_args["libraries"] = libraries
     ext_modules = [
-        Extension('eqcorrscan.utils.lib.libutils', sources=sources,
-                  **common_extension_args)]
+        Extension(
+            "eqcorrscan.utils.lib.libutils", sources=sources, **common_extension_args
+        )
+    ]
     return ext_modules
 
 
@@ -291,7 +298,10 @@ class CustomBuildExt(build_ext):
             print(cfg_vars["CFLAGS"])
         # Remove unsupported C-flags
         unsupported_flags = [
-            "-fuse-linker-plugin", "-ffat-lto-objects", "-flto-partition=none"]
+            "-fuse-linker-plugin",
+            "-ffat-lto-objects",
+            "-flto-partition=none",
+        ]
         for key in ["CFLAGS", "LDFLAGS", "LDSHARED"]:
             if key in cfg_vars:
                 print("System {0}:".format(key))
@@ -305,7 +315,7 @@ class CustomBuildExt(build_ext):
                 print("Editted {0}:".format(key))
                 print(cfg_vars[key])
 
-        if compiler == 'msvc':
+        if compiler == "msvc":
             # Add msvc specific hacks
 
             # Sort linking issues with init exported symbols
@@ -321,8 +331,7 @@ class CustomBuildExt(build_ext):
                 #
                 # We need to add the path to msvc includes
 
-                msvc_2008_path = (
-                    os.path.join(os.getcwd(), 'include', 'msvc_2008'))
+                msvc_2008_path = os.path.join(os.getcwd(), "include", "msvc_2008")
 
                 if self.include_dirs is not None:
                     self.include_dirs.append(msvc_2008_path)
@@ -335,8 +344,7 @@ class CustomBuildExt(build_ext):
                 # works, so even for 2010 we use our own (hacked) version
                 # of stdint.
                 # This should be pretty safe in whatever case.
-                msvc_2010_path = (
-                    os.path.join(os.getcwd(), 'include', 'msvc_2010'))
+                msvc_2010_path = os.path.join(os.getcwd(), "include", "msvc_2010")
 
                 if self.include_dirs is not None:
                     self.include_dirs.append(msvc_2010_path)
@@ -347,7 +355,7 @@ class CustomBuildExt(build_ext):
             # We need to prepend lib to all the library names
             _libraries = []
             for each_lib in self.libraries:
-                _libraries.append('lib' + each_lib)
+                _libraries.append("lib" + each_lib)
 
             self.libraries = _libraries
 
@@ -359,71 +367,88 @@ def setup_package():
     try:
         import numpy
     except ImportError:
-        build_requires = ['numpy>=1.6, <2.0']
+        build_requires = ["numpy>=1.6, <2.0"]
 
     if not READ_THE_DOCS:
-        install_requires = ['matplotlib>=1.3.0', 'scipy>=0.18',
-                            'bottleneck', 'obspy>=1.0.3', 'numpy>=1.12',
-                            'h5py']
+        install_requires = [
+            "matplotlib>=1.3.0",
+            "scipy>=1.10",
+            "bottleneck",
+            "obspy>=1.0.3",
+            "numpy>=1.12",
+            "h5py",
+        ]
     else:
-        install_requires = ['matplotlib>=1.3.0', 'obspy>=1.0.3', 'mock']
+        install_requires = ["matplotlib>=1.3.0", "obspy>=1.0.3", "mock"]
     install_requires.extend(build_requires)
 
     setup_args = {
-        'name': 'EQcorrscan',
-        'version': VERSION,
-        'description':
-        'EQcorrscan - matched-filter earthquake detection and analysis',
-        'long_description': long_description,
-        'url': 'https://github.com/eqcorrscan/EQcorrscan',
-        'author': 'Calum Chamberlain',
-        'author_email': 'calum.chamberlain@vuw.ac.nz',
-        'license': 'LGPL',
-        'classifiers': [
-            'Development Status :: 4 - Beta',
-            'Intended Audience :: Science/Research',
-            'Topic :: Scientific/Engineering',
-            'License :: OSI Approved :: GNU Library or Lesser General Public '
-            'License (LGPL)',
-            'Programming Language :: Python :: 3.6',
-            'Programming Language :: Python :: 3.7',
+        "name": "EQcorrscan",
+        "version": VERSION,
+        "description": "EQcorrscan - matched-filter earthquake detection and analysis",
+        "long_description": long_description,
+        "url": "https://github.com/eqcorrscan/EQcorrscan",
+        "author": "Calum Chamberlain",
+        "author_email": "calum.chamberlain@vuw.ac.nz",
+        "license": "LGPL",
+        "classifiers": [
+            "Development Status :: 4 - Beta",
+            "Intended Audience :: Science/Research",
+            "Topic :: Scientific/Engineering",
+            "License :: OSI Approved :: GNU Library or Lesser General Public "
+            "License (LGPL)",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
         ],
-        'keywords': 'earthquake correlation detection match-filter',
-        'scripts': scriptfiles,
-        'install_requires': install_requires,
-        'setup_requires': ['pytest-runner'],
-        'tests_require': ['pytest>=2.0.0', 'pytest-cov', 'pytest-pep8',
-                          'pytest-xdist', 'pytest-rerunfailures',
-                          'obspy>=1.1.0'],
-        'cmdclass': {'build_ext': CustomBuildExt},
-        'packages': [
-            'eqcorrscan', 'eqcorrscan.utils', 'eqcorrscan.core',
-            'eqcorrscan.core.match_filter', 'eqcorrscan.utils.lib',
-            'eqcorrscan.tutorials', 'eqcorrscan.helpers', 'eqcorrscan.tests'],
+        "keywords": "earthquake correlation detection match-filter",
+        "scripts": scriptfiles,
+        "install_requires": install_requires,
+        "setup_requires": ["pytest-runner"],
+        "tests_require": [
+            "pytest>=2.0.0",
+            "pytest-cov",
+            "pytest-pep8",
+            "pytest-xdist",
+            "pytest-rerunfailures",
+            "obspy>=1.1.0",
+        ],
+        "cmdclass": {"build_ext": CustomBuildExt},
+        "packages": [
+            "eqcorrscan",
+            "eqcorrscan.utils",
+            "eqcorrscan.core",
+            "eqcorrscan.core.match_filter",
+            "eqcorrscan.core.match_filter.helpers",
+            "eqcorrscan.utils.lib",
+            "eqcorrscan.tutorials",
+            "eqcorrscan.helpers",
+            "eqcorrscan.tests",
+        ],
     }
 
     if using_setuptools:
-        setup_args['setup_requires'] = build_requires
-        setup_args['install_requires'] = install_requires
+        setup_args["setup_requires"] = build_requires
+        setup_args["install_requires"] = install_requires
 
     no_mkl = False
     if "--no-mkl" in sys.argv:
         no_mkl = True
         sys.argv.remove("--no-mkl")
     if len(sys.argv) >= 2 and (
-        '--help' in sys.argv[1:] or
-        sys.argv[1] in ('--help-commands', 'egg_info', '--version',
-                        'clean')):
+        "--help" in sys.argv[1:]
+        or sys.argv[1] in ("--help-commands", "egg_info", "--version", "clean")
+    ):
         # For these actions, NumPy is not required.
         pass
     else:
-        setup_args['ext_modules'] = get_extensions(no_mkl=no_mkl)
-        setup_args['package_data'] = get_package_data()
-        setup_args['package_dir'] = get_package_dir()
+        setup_args["ext_modules"] = get_extensions(no_mkl=no_mkl)
+        setup_args["package_data"] = get_package_data()
+        setup_args["package_dir"] = get_package_dir()
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     setup_package()
