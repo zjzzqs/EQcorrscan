@@ -9,6 +9,7 @@ the data using obspy modules (which also rely on scipy and numpy).
     GNU Lesser General Public License, Version 3
     (https://www.gnu.org/copyleft/lesser.html)
 """
+
 import os
 
 import numpy as np
@@ -77,8 +78,10 @@ def _simple_qc(st, max_workers=None, chunksize=1):
     """
     qual = dict()
     with ThreadPoolExecutor(max_workers) as executor:
-        for tr, _qual in zip(st, executor.map(
-                _check_daylong, (tr.data for tr in st), chunksize=chunksize)):
+        for tr, _qual in zip(
+            st,
+            executor.map(_check_daylong, (tr.data for tr in st), chunksize=chunksize),
+        ):
             qual[tr.id] = _qual
     return qual
 
@@ -107,30 +110,34 @@ def _sanitize_length(st, starttime=None, endtime=None, daylong=False):
         if starttime is None:
             startdates = []
             for tr in st:
-                if abs(tr.stats.starttime - (UTCDateTime(
-                        tr.stats.starttime.date) + 86400)) < tr.stats.delta:
+                if (
+                    abs(
+                        tr.stats.starttime
+                        - (UTCDateTime(tr.stats.starttime.date) + 86400)
+                    )
+                    < tr.stats.delta
+                ):
                     # If the trace starts within 1 sample of the next day,
                     # use the next day as the startdate
                     startdates.append((tr.stats.starttime + 86400).date)
                     Logger.warning(
-                        f'{tr.id} starts within 1 sample of the next day, '
-                        f'using this time {(tr.stats.starttime + 86400).date}')
+                        f"{tr.id} starts within 1 sample of the next day, "
+                        f"using this time {(tr.stats.starttime + 86400).date}"
+                    )
                 else:
                     startdates.append(tr.stats.starttime.date)
             # Check that all traces start on the same date...
             if not len(set(startdates)) == 1:
-                raise NotImplementedError('Traces start on different days')
+                raise NotImplementedError("Traces start on different days")
             starttime = UTCDateTime(startdates[0])
     else:
         if starttime is not None and endtime is not None:
             for tr in st:
-                Logger.info(
-                    f"Trimming {tr.id} between {starttime} and {endtime}")
+                Logger.info(f"Trimming {tr.id} between {starttime} and {endtime}")
                 tr.trim(starttime, endtime)
-                if len(tr.data) == ((endtime - starttime) *
-                                    tr.stats.sampling_rate) + 1:
+                if len(tr.data) == ((endtime - starttime) * tr.stats.sampling_rate) + 1:
                     Logger.info(f"{tr.id} is overlength dropping first sample")
-                    tr.data = tr.data[1:len(tr.data)]
+                    tr.data = tr.data[1 : len(tr.data)]
                     # TODO: this should adjust the start-time
                     # tr.stats.starttime += tr.stats.delta
             length = endtime - starttime
@@ -146,15 +153,28 @@ def _sanitize_length(st, starttime=None, endtime=None, daylong=False):
 
 @lru_cache(maxsize=5)
 def _get_window(window, npts):
-    """ Get window for resampling stabilisation. """
+    """Get window for resampling stabilisation."""
     from scipy.signal import get_window
+
     return np.fft.ifftshift(get_window(window, npts))
 
 
-def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
-                  num_cores=False, starttime=None, endtime=None,
-                  daylong=False, seisan_chan_names=False, fill_gaps=True,
-                  ignore_length=False, ignore_bad_data=False):
+def multi_process(
+    st,
+    lowcut,
+    highcut,
+    filt_order,
+    samp_rate,
+    parallel=False,
+    num_cores=False,
+    starttime=None,
+    endtime=None,
+    daylong=False,
+    seisan_chan_names=False,
+    fill_gaps=True,
+    ignore_length=False,
+    ignore_bad_data=False,
+):
     """
     Apply standardised processing workflow to data for matched-filtering
 
@@ -227,7 +247,7 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
         tracein = False
     # Add sanity check for filter
     if highcut and highcut >= 0.5 * samp_rate:
-        raise IOError('Highcut must be lower than the Nyquist')
+        raise IOError("Highcut must be lower than the Nyquist")
     if highcut and lowcut:
         assert lowcut < highcut, f"Lowcut: {lowcut} above highcut: {highcut}"
 
@@ -254,12 +274,13 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     chunksize = len(st) // max_workers
 
     st, length, clip, starttime = _sanitize_length(
-        st=st, starttime=starttime, endtime=endtime, daylong=daylong)
+        st=st, starttime=starttime, endtime=endtime, daylong=daylong
+    )
 
     for tr in st:
         if len(tr.data) == 0:
             st.remove(tr)
-            Logger.warning('No data for {0} after trim'.format(tr.id))
+            Logger.warning("No data for {0} after trim".format(tr.id))
 
     # Do work
     # 0. Enforce double-preccision floats for this work
@@ -281,8 +302,10 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     qual = _simple_qc(st, max_workers=max_workers, chunksize=chunksize)
     for trace_id, _qual in qual.items():
         if not _qual:
-            msg = ("Data have more zeros than actual data, please check the "
-                   f"raw data set-up and manually sort it: {tr.id}")
+            msg = (
+                "Data have more zeros than actual data, please check the "
+                f"raw data set-up and manually sort it: {tr.id}"
+            )
             if not ignore_bad_data:
                 raise ValueError(msg)
             else:
@@ -292,26 +315,30 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
                 except ValueError:
                     Logger.info(
                         f"{trace_id} not found in {set(tr.id for tr in st)},"
-                        f" ignoring")
+                        f" ignoring"
+                    )
 
     # 3. Detrend
     # ~ 2x speedup for 50 100 Hz daylong traces on 12 threads
     st = _multi_detrend(st, max_workers=max_workers, chunksize=chunksize)
 
     # 4. Check length and pad to length
-    padded = {tr.id: (0., 0.) for tr in st}
+    padded = {tr.id: (0.0, 0.0) for tr in st}
     if clip:
         st.trim(starttime, starttime + length, nearest_sample=True)
         # Indexing because we are going to overwrite traces
         for i, _ in enumerate(st):
             if float(st[i].stats.npts / st[i].stats.sampling_rate) != length:
                 Logger.info(
-                    'Data for {0} are not long-enough, will zero pad'.format(
-                        st[i].id))
+                    "Data for {0} are not long-enough, will zero pad".format(st[i].id)
+                )
                 st[i], padded[st[i].id] = _length_check(
-                    st[i], starttime=starttime, length=length,
+                    st[i],
+                    starttime=starttime,
+                    length=length,
                     ignore_length=ignore_length,
-                    ignore_bad_data=ignore_bad_data)
+                    ignore_bad_data=ignore_bad_data,
+                )
         # Remove None traces that might be returned from length checking
         st.traces = [tr for tr in st if tr is not None]
 
@@ -324,8 +351,8 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     # 5. Resample
     # ~ 3.25x speedup for 50 100 Hz daylong traces on 12 threads
     st = _multi_resample(
-        st, sampling_rate=samp_rate, max_workers=max_workers,
-        chunksize=chunksize)
+        st, sampling_rate=samp_rate, max_workers=max_workers, chunksize=chunksize
+    )
 
     # Detrend again before filtering
     st = _multi_detrend(st, max_workers=max_workers, chunksize=chunksize)
@@ -333,8 +360,13 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     # 6. Filter
     # ~3.25x speedup for 50 100 Hz daylong traces on 12 threads
     st = _multi_filter(
-        st, highcut=highcut, lowcut=lowcut, filt_order=filt_order,
-        max_workers=max_workers, chunksize=chunksize)
+        st,
+        highcut=highcut,
+        lowcut=lowcut,
+        filt_order=filt_order,
+        max_workers=max_workers,
+        chunksize=chunksize,
+    )
 
     # 7. Reapply zeros after processing from 4
     for tr in st:
@@ -349,29 +381,39 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
         post_pad_len = len(post_pad)
         Logger.debug(
             f"Taking only valid data between {pre_pad_len} and "
-            f"{tr.stats.npts - post_pad_len} samples")
+            f"{tr.stats.npts - post_pad_len} samples"
+        )
         # Re-apply the pads, taking only the data section that was valid
         tr.data = np.concatenate(
-            [pre_pad, tr.data[pre_pad_len: len(tr.data) - post_pad_len],
-             post_pad])
+            [pre_pad, tr.data[pre_pad_len : len(tr.data) - post_pad_len], post_pad]
+        )
         Logger.debug(str(tr))
 
     # 8. Recheck length
     for tr in st:
         if float(tr.stats.npts * tr.stats.delta) != length and clip:
-            Logger.info(f'Data for {tr.id} are not of required length, will '
-                        f'zero pad')
+            Logger.info(
+                f"Data for {tr.id} are not of required length, will " f"zero pad"
+            )
             # Use obspy's trim function with zero padding
-            tr = tr.trim(starttime, starttime + length, pad=True, fill_value=0,
-                         nearest_sample=True)
+            tr = tr.trim(
+                starttime,
+                starttime + length,
+                pad=True,
+                fill_value=0,
+                nearest_sample=True,
+            )
             # If there is one sample too many after this remove the last one
             # by convention
             if len(tr.data) == (length * tr.stats.sampling_rate) + 1:
-                tr.data = tr.data[1:len(tr.data)]
-            if abs((tr.stats.sampling_rate * length) -
-                   tr.stats.npts) > tr.stats.delta:
-                raise ValueError('Data are not required length for ' +
-                                 tr.stats.station + '.' + tr.stats.channel)
+                tr.data = tr.data[1 : len(tr.data)]
+            if abs((tr.stats.sampling_rate * length) - tr.stats.npts) > tr.stats.delta:
+                raise ValueError(
+                    "Data are not required length for "
+                    + tr.stats.station
+                    + "."
+                    + tr.stats.channel
+                )
 
     # 9. Re-insert gaps from 1
     for i, tr in enumerate(st):
@@ -396,14 +438,7 @@ def multi_process(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
 
 
 @lru_cache(maxsize=50)
-def _empty_trace(
-        network,
-        station,
-        location,
-        channel,
-        starttime,
-        sampling_rate
-):
+def _empty_trace(network, station, location, channel, starttime, sampling_rate):
     """
     Generate an empty trace with a basic header matching the input trace
 
@@ -423,11 +458,16 @@ def _empty_trace(
     :returns: trace
     """
     bad_trace = Trace(
-        data=np.array([]), header={
-            "station": station, "channel": channel,
-            "network": network, "location": location,
+        data=np.array([]),
+        header={
+            "station": station,
+            "channel": channel,
+            "network": network,
+            "location": location,
             "starttime": starttime,
-            "sampling_rate": sampling_rate})
+            "sampling_rate": sampling_rate,
+        },
+    )
     return bad_trace
 
 
@@ -458,17 +498,23 @@ def _length_check(tr, starttime, length, ignore_length, ignore_bad_data):
     """
     trace_length = tr.stats.endtime - tr.stats.starttime
     if trace_length < 0.8 * length and not ignore_length:
-        msg = f"Data for {tr.id} is {trace_length:.2f} seconds "\
-              f"long, which is less than 80 percent of the desired "\
-              f"length ({length} seconds), will not pad"
+        msg = (
+            f"Data for {tr.id} is {trace_length:.2f} seconds "
+            f"long, which is less than 80 percent of the desired "
+            f"length ({length} seconds), will not pad"
+        )
         if not ignore_bad_data:
             raise NotImplementedError(msg)
         else:
             Logger.warning(msg)
-            return _empty_trace(tr.stats.network, tr.stats.station,
-                                tr.stats.location, tr.stats.channel,
-                                tr.stats.starttime.datetime,
-                                tr.stats.sampling_rate), (0., 0.)
+            return _empty_trace(
+                tr.stats.network,
+                tr.stats.station,
+                tr.stats.location,
+                tr.stats.channel,
+                tr.stats.starttime.datetime,
+                tr.stats.sampling_rate,
+            ), (0.0, 0.0)
     # trim, then calculate length of any pads required
     pre_pad_secs = tr.stats.starttime - starttime
     post_pad_secs = (starttime + length) - tr.stats.endtime
@@ -478,7 +524,8 @@ def _length_check(tr, starttime, length, ignore_length, ignore_bad_data):
         Logger.debug(str(tr))
         Logger.info(
             f"Padding to length with {pre_pad_secs} s before "
-            f"and {post_pad_secs} s at end")
+            f"and {post_pad_secs} s at end"
+        )
         tr.data = np.concatenate([pre_pad, tr.data, post_pad])
         # Use this rather than the expected pad because of rounding samples
         tr.stats.starttime -= len(pre_pad) * tr.stats.delta
@@ -486,28 +533,31 @@ def _length_check(tr, starttime, length, ignore_length, ignore_bad_data):
     # If there is one sample too many after this remove the first one
     # by convention
     if tr.stats.npts == (length * tr.stats.sampling_rate) + 1:
-        tr.data = tr.data[1:len(tr.data)]
+        tr.data = tr.data[1 : len(tr.data)]
     # Cope with time precision.
-    if abs((tr.stats.sampling_rate * length) -
-           tr.stats.npts) > tr.stats.delta:
-        msg = (f"Data sampling-rate * length ({tr.stats.sampling_rate} *"
-               f" {length} = {tr.stats.sampling_rate * length}) does not "
-               f"match number of samples ({tr.stats.npts}) for {tr.id}")
+    if abs((tr.stats.sampling_rate * length) - tr.stats.npts) > tr.stats.delta:
+        msg = (
+            f"Data sampling-rate * length ({tr.stats.sampling_rate} *"
+            f" {length} = {tr.stats.sampling_rate * length}) does not "
+            f"match number of samples ({tr.stats.npts}) for {tr.id}"
+        )
         if not ignore_bad_data:
             raise ValueError(msg)
         else:
             Logger.warning(msg)
-            return _empty_trace(tr.stats.network, tr.stats.station,
-                                tr.stats.location, tr.stats.channel,
-                                tr.stats.starttime.datetime,
-                                tr.stats.sampling_rate), (0., 0.)
-    Logger.debug(
-        f'I now have {tr.stats.npts} data points after enforcing length')
+            return _empty_trace(
+                tr.stats.network,
+                tr.stats.station,
+                tr.stats.location,
+                tr.stats.channel,
+                tr.stats.starttime.datetime,
+                tr.stats.sampling_rate,
+            ), (0.0, 0.0)
+    Logger.debug(f"I now have {tr.stats.npts} data points after enforcing length")
     return tr, (pre_pad_secs, post_pad_secs)
 
 
-def _multi_filter(st, highcut, lowcut, filt_order, max_workers=None,
-                  chunksize=1):
+def _multi_filter(st, highcut, lowcut, filt_order, max_workers=None, chunksize=1):
     """
     Multithreaded zero-phase butterworth filtering of multi-channel data.
 
@@ -548,24 +598,23 @@ def _multi_filter(st, highcut, lowcut, filt_order, max_workers=None,
     # Design filter
     if highcut and lowcut:
         z, p, k = iirfilter(
-            filt_order, [low, high], btype='band',
-            ftype='butter', output='zpk')
+            filt_order, [low, high], btype="band", ftype="butter", output="zpk"
+        )
     elif highcut:
         z, p, k = iirfilter(
-            filt_order, high, btype='lowpass', ftype='butter',
-            output='zpk')
+            filt_order, high, btype="lowpass", ftype="butter", output="zpk"
+        )
     elif lowcut:
         z, p, k = iirfilter(
-            filt_order, low, btype='highpass', ftype='butter',
-            output='zpk')
+            filt_order, low, btype="highpass", ftype="butter", output="zpk"
+        )
 
     sos = zpk2sos(z, p, k)
 
     _filter = partial(_zerophase_filter, sos)
 
     with ThreadPoolExecutor(max_workers) as executor:
-        results = executor.map(
-            _filter, (tr.data for tr in st), chunksize=chunksize)
+        results = executor.map(_filter, (tr.data for tr in st), chunksize=chunksize)
 
     for r, tr in zip(results, st):
         tr.data = r
@@ -605,8 +654,7 @@ def _multi_detrend(st, max_workers=None, chunksize=1):
     for tr in st:
         tr.data = np.require(tr.data, np.float64)
     with ThreadPoolExecutor(max_workers) as executor:
-        results = executor.map(_detrend, (tr.data for tr in st),
-                               chunksize=chunksize)
+        results = executor.map(_detrend, (tr.data for tr in st), chunksize=chunksize)
     # Ensure tasks complete
     _ = (r for r in results)
     return st
@@ -626,7 +674,8 @@ def _detrend(data):
     ndat = data.shape[0]
     x1, x2 = data[0], data[-1]
     data -= x1 + np.arange(ndat, dtype=np.float64) * (
-        np.float64(x2 - x1) / np.float64(ndat - 1))
+        np.float64(x2 - x1) / np.float64(ndat - 1)
+    )
     return
 
 
@@ -647,14 +696,21 @@ def _multi_resample(st, sampling_rate, max_workers=None, chunksize=1):
     """
     # Get the windows, and downsampling factors ahead of time
     to_resample = (
-        (tr.data, tr.stats.delta,
-         tr.stats.sampling_rate / float(sampling_rate),
-         sampling_rate, _get_window("hann", tr.stats.npts), tr.id)
-        for tr in st)
+        (
+            tr.data,
+            tr.stats.delta,
+            tr.stats.sampling_rate / float(sampling_rate),
+            sampling_rate,
+            _get_window("hann", tr.stats.npts),
+            tr.id,
+        )
+        for tr in st
+    )
     with ThreadPoolExecutor(max_workers) as executor:
         # Unpack tuple using lambda
-        results = executor.map(lambda args: _resample(*args), to_resample,
-                               chunksize=chunksize)
+        results = executor.map(
+            lambda args: _resample(*args), to_resample, chunksize=chunksize
+        )
     for r, tr in zip(results, st):
         tr.data = r
         tr.stats.sampling_rate = sampling_rate
@@ -684,12 +740,14 @@ def _resample(data, delta, factor, sampling_rate, large_w, _id):
     # Need to work with numpy objects to release the GIL
     npts = data.shape[0]
     Logger.debug(f"Running resample for {_id} with {npts} data points")
-    Logger.debug(f"{_id}: delta={delta}, factor={factor}, "
-                 f"sampling_rate out={sampling_rate}")
-    Logger.debug(f"Sanity check data for {_id}, start and "
-                 f"end: {data[0]} -- {data[-1]}")
+    Logger.debug(
+        f"{_id}: delta={delta}, factor={factor}, " f"sampling_rate out={sampling_rate}"
+    )
+    Logger.debug(
+        f"Sanity check data for {_id}, start and " f"end: {data[0]} -- {data[-1]}"
+    )
     Logger.debug(f"dtype for {_id}: {data.dtype}")
-    if data.dtype == np.dtype('float64'):
+    if data.dtype == np.dtype("float64"):
         _floater = np.float64  # Retain double-precision
     else:
         _floater = np.float32
@@ -702,7 +760,7 @@ def _resample(data, delta, factor, sampling_rate, large_w, _id):
     # Forward fft
     x = np.fft.rfft(data)
     # Window
-    x *= large_w[:npts // 2 + 1]
+    x *= large_w[: npts // 2 + 1]
 
     # interpolate
     f = df * np.arange(0, npts // 2 + 1, dtype=np.int32)
@@ -710,8 +768,7 @@ def _resample(data, delta, factor, sampling_rate, large_w, _id):
     large_f = d_large_f * np.arange(0, n_large_f, dtype=np.int32)
 
     # Have to split into real and imaginary parts for interpolation.
-    y = np.interp(large_f, f, np.real(x)) + (1j * np.interp(
-        large_f, f, np.imag(x)))
+    y = np.interp(large_f, f, np.real(x)) + (1j * np.interp(large_f, f, np.imag(x)))
     # Try to reduce memory before doing the ifft
     del large_f, f, x
 
@@ -736,9 +793,8 @@ def _zero_pad_gaps(tr, gaps, fill_gaps=True):
     start_in, end_in = (tr.stats.starttime, tr.stats.endtime)
     tr = Stream([tr])  # convert to stream to use cutout method
     for gap in gaps:
-        Logger.debug(
-            f"Filling gap between {gap['starttime']} and {gap['endtime']}")
-        tr.cutout(gap['starttime'], gap['endtime']).merge()
+        Logger.debug(f"Filling gap between {gap['starttime']} and {gap['endtime']}")
+        tr.cutout(gap["starttime"], gap["endtime"]).merge()
     tr = tr.merge()[0]
     if fill_gaps:
         tr = tr.split()
@@ -749,11 +805,13 @@ def _zero_pad_gaps(tr, gaps, fill_gaps=True):
         if tr.stats.starttime != start_in:
             # pad with zeros
             tr.data = np.concatenate(
-                [np.zeros(int(tr.stats.starttime - start_in)), tr.data])
+                [np.zeros(int(tr.stats.starttime - start_in)), tr.data]
+            )
             tr.stats.starttime = start_in
         if tr.stats.endtime != end_in:
             tr.data = np.concatenate(
-                [tr.data, np.zeros(int(end_in - tr.stats.endtime))])
+                [tr.data, np.zeros(int(end_in - tr.stats.endtime))]
+            )
     return tr
 
 
@@ -769,15 +827,26 @@ def _fill_gaps(tr):
     tr = tr.split()
     gaps = tr.get_gaps()
     tr = tr.detrend().merge(fill_value=0)[0]
-    gaps = [{'starttime': gap[4], 'endtime': gap[5]} for gap in gaps]
+    gaps = [{"starttime": gap[4], "endtime": gap[5]} for gap in gaps]
     if len(gaps):
         Logger.debug(f"Gaps in {tr.id}: \n\t{gaps}")
     return gaps, tr
 
 
-def _group_process(filt_order, highcut, lowcut, samp_rate, process_length,
-                   parallel, cores, stream, daylong,
-                   ignore_length, ignore_bad_data, overlap):
+def _group_process(
+    filt_order,
+    highcut,
+    lowcut,
+    samp_rate,
+    process_length,
+    parallel,
+    cores,
+    stream,
+    daylong,
+    ignore_length,
+    ignore_bad_data,
+    overlap,
+):
     """
     Process and chunk data.
 
@@ -807,11 +876,15 @@ def _group_process(filt_order, highcut, lowcut, samp_rate, process_length,
     """
     processed_streams = []
     kwargs = {
-        'filt_order': filt_order,
-        'highcut': highcut, 'lowcut': lowcut,
-        'samp_rate': samp_rate, 'parallel': parallel,
-        'num_cores': cores, 'ignore_length': ignore_length,
-        'ignore_bad_data': ignore_bad_data}
+        "filt_order": filt_order,
+        "highcut": highcut,
+        "lowcut": lowcut,
+        "samp_rate": samp_rate,
+        "parallel": parallel,
+        "num_cores": cores,
+        "ignore_length": ignore_length,
+        "ignore_bad_data": ignore_bad_data,
+    }
     # Processing always needs to be run to account for gaps - pre-process will
     # check whether filtering and resampling needs to be done.
 
@@ -821,14 +894,15 @@ def _group_process(filt_order, highcut, lowcut, samp_rate, process_length,
     if daylong:
         if process_length != 86400:
             Logger.warning(
-                f'Processing day-long data, but template was cut from '
-                f'{process_length} s long data, will reduce correlations')
+                f"Processing day-long data, but template was cut from "
+                f"{process_length} s long data, will reduce correlations"
+            )
         process_length = 86400
         # Check that data all start on the same day, otherwise strange
         # things will happen...
         startdates = [starttime.date for starttime in starttimes]
         if not len(set(startdates)) == 1:
-            Logger.warning('Data start on different days, setting to last day')
+            Logger.warning("Data start on different days, setting to last day")
             starttime = UTCDateTime(startdates[-1])
         else:
             starttime = UTCDateTime(startdates[0])  # Can take any
@@ -842,87 +916,90 @@ def _group_process(filt_order, highcut, lowcut, samp_rate, process_length,
     n_chunks = int(data_len_samps // chunk_len_samps)
     Logger.info(f"Splitting these data in {n_chunks} chunks")
     if n_chunks == 0:
-        Logger.error('Data must be process_length or longer, not computing')
+        Logger.error("Data must be process_length or longer, not computing")
         return []
 
     for i in range(n_chunks):
-        kwargs.update(
-            {'starttime': starttime + (i * (process_length - overlap))})
+        kwargs.update({"starttime": starttime + (i * (process_length - overlap))})
         if not daylong:
-            _endtime = kwargs['starttime'] + process_length
-            kwargs.update({'endtime': _endtime})
+            _endtime = kwargs["starttime"] + process_length
+            kwargs.update({"endtime": _endtime})
         else:
-            _endtime = kwargs['starttime'] + 86400
+            _endtime = kwargs["starttime"] + 86400
 
         # This is where data should be copied and only here!
         if n_chunks > 1:
             chunk_stream = _quick_copy_stream(
-                stream.slice(starttime=kwargs['starttime'], endtime=_endtime))
+                stream.slice(starttime=kwargs["starttime"], endtime=_endtime)
+            )
             # Reduce memory by removing data that we don't need anymore
             stream.trim(starttime=_endtime - overlap)
         else:
             # If we only have one chunk, lets just use those data!
-            chunk_stream = stream.trim(
-                starttime=kwargs['starttime'], endtime=_endtime)
-        Logger.info(f"Processing chunk {i} between {kwargs['starttime']} "
-                    f"and {_endtime}")
+            chunk_stream = stream.trim(starttime=kwargs["starttime"], endtime=_endtime)
+        Logger.info(
+            f"Processing chunk {i} between {kwargs['starttime']} " f"and {_endtime}"
+        )
         if len(chunk_stream) == 0:
-            Logger.warning(
-                f"No data between {kwargs['starttime']} and {_endtime}")
+            Logger.warning(f"No data between {kwargs['starttime']} and {_endtime}")
             continue
         # Enforce chunk npts
         for tr in chunk_stream:
             Logger.info(
                 f"Enforcing {int(process_length * tr.stats.sampling_rate)} "
-                f"samples for {tr.id} (had {tr.stats.npts} points)")
-            tr.data = tr.data[0:int(
-                process_length * tr.stats.sampling_rate)]
+                f"samples for {tr.id} (had {tr.stats.npts} points)"
+            )
+            tr.data = tr.data[0 : int(process_length * tr.stats.sampling_rate)]
         _chunk_stream_lengths = {
-            tr.id: tr.stats.endtime - tr.stats.starttime
-            for tr in chunk_stream}
+            tr.id: tr.stats.endtime - tr.stats.starttime for tr in chunk_stream
+        }
         for tr_id, chunk_length in _chunk_stream_lengths.items():
             # Remove traces that are too short.
-            if not ignore_length and chunk_length <= .8 * process_length:
+            if not ignore_length and chunk_length <= 0.8 * process_length:
                 tr = chunk_stream.select(id=tr_id)[0]
                 chunk_stream.remove(tr)
                 Logger.warning(
                     "Data chunk on {0} starting {1} and ending {2} is "
                     "below 80% of the requested length, will not use"
-                    " this.".format(
-                        tr.id, tr.stats.starttime, tr.stats.endtime))
+                    " this.".format(tr.id, tr.stats.starttime, tr.stats.endtime)
+                )
         if len(chunk_stream) == 0:
             continue
-        Logger.debug(
-            f"Processing chunk:\n{chunk_stream.__str__(extended=True)}")
+        Logger.debug(f"Processing chunk:\n{chunk_stream.__str__(extended=True)}")
         Logger.info(f"Processing using {kwargs}")
         _processed_stream = multi_process(st=chunk_stream, **kwargs)
         # If data have more zeros then pre-processing will return a
         # trace of 0 length
         _processed_stream.traces = [
-            tr for tr in _processed_stream if tr.stats.npts != 0]
+            tr for tr in _processed_stream if tr.stats.npts != 0
+        ]
         if len(_processed_stream) == 0:
             Logger.warning(
                 f"Data quality insufficient between {kwargs['starttime']}"
-                f" and {_endtime}")
+                f" and {_endtime}"
+            )
             continue
         # Pre-processing does additional checks for zeros - we need to check
         # again whether we actually have something useful from this.
         processed_chunk_stream_lengths = [
-            tr.stats.endtime - tr.stats.starttime
-            for tr in _processed_stream]
-        if min(processed_chunk_stream_lengths) >= .8 * process_length:
+            tr.stats.endtime - tr.stats.starttime for tr in _processed_stream
+        ]
+        if min(processed_chunk_stream_lengths) >= 0.8 * process_length:
             processed_streams.append(_processed_stream)
         else:
             Logger.warning(
                 f"Data quality insufficient between {kwargs['starttime']}"
-                f" and {_endtime}")
+                f" and {_endtime}"
+            )
             continue
 
     if _endtime < stream[0].stats.endtime:
         Logger.warning(
             "Last bit of data between {0} and {1} will go unused "
             "because it is shorter than a chunk of {2} s".format(
-                _endtime, stream[0].stats.endtime, process_length))
+                _endtime, stream[0].stats.endtime, process_length
+            )
+        )
     return processed_streams
 
 
@@ -945,12 +1022,13 @@ def _quick_copy_trace(trace, deepcopy_data=True):
     """
     new_trace = Trace()
     for key, value in trace.__dict__.items():
-        if key == 'stats':
+        if key == "stats":
             new_stats = new_trace.stats
             for key_2, value_2 in value.__dict__.items():
                 if isinstance(value_2, UTCDateTime):
                     new_stats.__dict__[key_2] = UTCDateTime(
-                        ns=value_2.__dict__['_UTCDateTime__ns'])
+                        ns=value_2.__dict__["_UTCDateTime__ns"]
+                    )
                 else:
                     new_stats.__dict__[key_2] = value_2
         elif deepcopy_data:
@@ -992,8 +1070,7 @@ def _quick_copy_stream(stream, deepcopy_data=True):
     """
     new_traces = list()
     for trace in stream:
-        new_traces.append(
-            _quick_copy_trace(trace, deepcopy_data=deepcopy_data))
+        new_traces.append(_quick_copy_trace(trace, deepcopy_data=deepcopy_data))
     return Stream(new_traces)
 
 
@@ -1002,18 +1079,25 @@ def _stream_quick_select(stream, seed_id):
     4x quicker selection of traces in stream by full Seed-ID. Does not support
     wildcards or selection by network/station/location/channel alone.
     """
-    net, sta, loc, chan = seed_id.split('.')
+    net, sta, loc, chan = seed_id.split(".")
     stream = Stream(
-        [tr for tr in stream
-         if (tr.stats.network == net and
-             tr.stats.station == sta and
-             tr.stats.location == loc and
-             tr.stats.channel == chan)])
+        [
+            tr
+            for tr in stream
+            if (
+                tr.stats.network == net
+                and tr.stats.station == sta
+                and tr.stats.location == loc
+                and tr.stats.channel == chan
+            )
+        ]
+    )
     return stream
 
 
-def _prep_data_for_correlation(stream, templates, template_names=None,
-                               force_stream_epoch=True):
+def _prep_data_for_correlation(
+    stream, templates, template_names=None, force_stream_epoch=True
+):
     """
     Check that all channels are the same length and that all channels have data
     for both template and stream.
@@ -1033,7 +1117,8 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
     """
     n_templates = len(templates)
     template_samp_rates = {
-        tr.stats.sampling_rate for template in templates for tr in template}
+        tr.stats.sampling_rate for template in templates for tr in template
+    }
     stream_samp_rates = {tr.stats.sampling_rate for tr in stream}
     samp_rates = template_samp_rates.union(stream_samp_rates)
     assert len(samp_rates) == 1, "Sampling rates differ"
@@ -1054,27 +1139,32 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
     else:
         stream_length = max([tr.stats.npts for tr in stream])
 
-    template_length = {
-        tr.stats.npts for template in templates for tr in template}
+    template_length = {tr.stats.npts for template in templates for tr in template}
     assert len(template_length) == 1, "Template traces not all the same length"
     template_length = template_length.pop()
 
     stream_ids = {tr.id for tr in stream}
 
     # Need to ensure that a channel can be in the template multiple times.
-    all_template_ids = [
-        Counter([tr.id for tr in template]) for template in templates]
+    all_template_ids = [Counter([tr.id for tr in template]) for template in templates]
     template_ids = {
         stream_id: max(tid.get(stream_id, 0) for tid in all_template_ids)
-        for stream_id in stream_ids}
+        for stream_id in stream_ids
+    }
     template_ids = {_id: value for _id, value in template_ids.items() if value}
 
     seed_ids = sorted(
-        [key.split('.') + [i] for key, value in template_ids.items()
-         for i in range(value)])
-    seed_ids = [('.'.join(seed_id[0:-1]), seed_id[-1]) for seed_id in seed_ids]
-    Logger.info(f"Prepping for {len(seed_ids)} channels that share seed-ids "
-                f"between templates and stream")
+        [
+            key.split(".") + [i]
+            for key, value in template_ids.items()
+            for i in range(value)
+        ]
+    )
+    seed_ids = [(".".join(seed_id[0:-1]), seed_id[-1]) for seed_id in seed_ids]
+    Logger.info(
+        f"Prepping for {len(seed_ids)} channels that share seed-ids "
+        f"between templates and stream"
+    )
     Logger.debug(f"Shared seed-ids: {seed_ids}")
 
     for channel_number, seed_id in enumerate(template_ids.keys()):
@@ -1088,27 +1178,29 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
         if stream_channel.stats.npts == stream_length:
             stream_data = stream_channel.data
         else:
-            Logger.info('Data for {0} is not as long as needed, '
-                        'padding'.format(stream_channel.id))
+            Logger.info(
+                "Data for {0} is not as long as needed, "
+                "padding".format(stream_channel.id)
+            )
             if force_stream_epoch:
-                start_pad = int(samp_rate * (
-                        stream_channel.stats.starttime - stream_start))
-                end_pad = stream_length - (
-                        start_pad + stream_channel.stats.npts)
+                start_pad = int(
+                    samp_rate * (stream_channel.stats.starttime - stream_start)
+                )
+                end_pad = stream_length - (start_pad + stream_channel.stats.npts)
                 # In some cases there will be one sample missing when sampling
                 # time-stamps are not set consistently between channels, this
                 # results in start_pad and end_pad being len==0
                 if start_pad == 0 and end_pad == 0:
-                    Logger.debug("Start and end pad are both zero, padding "
-                                 "at one end")
+                    Logger.debug(
+                        "Start and end pad are both zero, padding " "at one end"
+                    )
                     if (stream_channel.stats.starttime - stream_start) > (
-                       stream_end - stream_channel.stats.endtime):
-                        start_pad = int(
-                            stream_length - stream_channel.stats.npts)
+                        stream_end - stream_channel.stats.endtime
+                    ):
+                        start_pad = int(stream_length - stream_channel.stats.npts)
                     else:
-                        end_pad = int(
-                            stream_length - stream_channel.stats.npts)
-                stream_channel.stats.starttime -= (start_pad / samp_rate)
+                        end_pad = int(stream_length - stream_channel.stats.npts)
+                stream_channel.stats.starttime -= start_pad / samp_rate
             else:
                 start_pad = 0
                 end_pad = stream_length - stream_channel.stats.npts
@@ -1122,25 +1214,38 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
 
     # Initialize nan template for speed.
     nan_channel = np.full(template_length, np.nan, dtype=np.float32)
-    nan_channel = np.require(nan_channel, requirements=['C_CONTIGUOUS'])
+    nan_channel = np.require(nan_channel, requirements=["C_CONTIGUOUS"])
     nan_template = Stream()
     for _seed_id in seed_ids:
-        net, sta, loc, chan = _seed_id[0].split('.')
-        nan_template += Trace(header=Stats({
-            'network': net, 'station': sta, 'location': loc,
-            'channel': chan, 'starttime': UTCDateTime(ns=0),
-            'npts': template_length, 'sampling_rate': samp_rate}))
+        net, sta, loc, chan = _seed_id[0].split(".")
+        nan_template += Trace(
+            header=Stats(
+                {
+                    "network": net,
+                    "station": sta,
+                    "location": loc,
+                    "channel": chan,
+                    "starttime": UTCDateTime(ns=0),
+                    "npts": template_length,
+                    "sampling_rate": samp_rate,
+                }
+            )
+        )
 
-    # Remove templates with number of matching channels' ids (uniq) < 6 (2 stations, for either one P waveform or three P waveforms)
     filt = np.ones(len(template_names)).astype(bool)
     for i, template in enumerate(templates):
         trace_ids = {tr.id for tr in template}
-        if len(trace_ids.intersection(stream_ids)) < 6:
+        if len(trace_ids.intersection(stream_ids)) == 0:
+            # Remove templates with number of matching channels' ids (uniq) < 6 (2 stations, for either one P waveform or three P waveforms)
+            # if len(trace_ids.intersection(stream_ids)) < 6:
             filt[i] = 0
 
-    _out = dict(zip(
-        [_tn for _tn, _filt in zip(template_names, filt) if _filt],
-        [_t for _t, _filt in zip(templates, filt) if _filt]))
+    _out = dict(
+        zip(
+            [_tn for _tn, _filt in zip(template_names, filt) if _filt],
+            [_t for _t, _filt in zip(templates, filt) if _filt],
+        )
+    )
     flt_templates = list(_out.values())
 
     if len(_out) != len(templates):
@@ -1150,34 +1255,52 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
     # continuous data for them. If this happens, we need to add a NaN-stream to
     # the continuous data to avoid inconsistent detection times.
     n_template_traces = np.array([len(temp) for temp in flt_templates])
-    n_stream_traces = sum([n+1 for s, n in seed_ids])
+    n_stream_traces = sum([n + 1 for s, n in seed_ids])
     # These checks are not necessary if all templates will get NaN-traces,
     # because the NaN-traces will save the right starttime for the template.
     nan_stream_ids = list()
     if any(n_template_traces > n_stream_traces):
         earliest_templ_trace_ids = set(
-            [template.sort(['starttime'])[0].id for template in flt_templates])
+            [template.sort(["starttime"])[0].id for template in flt_templates]
+        )
         for earliest_templ_trace_id in earliest_templ_trace_ids:
             if earliest_templ_trace_id not in template_ids:
                 nan_stream_ids.append(earliest_templ_trace_id)
-                net, sta, loc, chan = earliest_templ_trace_id.split('.')
-                nan_template += Trace(header=Stats({
-                    'network': net, 'station': sta, 'location': loc,
-                    'channel': chan, 'starttime': UTCDateTime(ns=0),
-                    'sampling_rate': samp_rate}))
-                stream_nan_data = np.full(
-                    stream_length, np.nan, dtype=np.float32)
+                net, sta, loc, chan = earliest_templ_trace_id.split(".")
+                nan_template += Trace(
+                    header=Stats(
+                        {
+                            "network": net,
+                            "station": sta,
+                            "location": loc,
+                            "channel": chan,
+                            "starttime": UTCDateTime(ns=0),
+                            "sampling_rate": samp_rate,
+                        }
+                    )
+                )
+                stream_nan_data = np.full(stream_length, np.nan, dtype=np.float32)
                 out_stream += Trace(
                     data=np.ma.masked_array(stream_nan_data, stream_nan_data),
-                    header=Stats({
-                        'network': net, 'station': sta, 'location': loc,
-                        'channel': chan, 'starttime': stream_start,
-                        'npts': stream_length, 'sampling_rate': samp_rate}))
+                    header=Stats(
+                        {
+                            "network": net,
+                            "station": sta,
+                            "location": loc,
+                            "channel": chan,
+                            "starttime": stream_start,
+                            "npts": stream_length,
+                            "sampling_rate": samp_rate,
+                        }
+                    ),
+                )
                 seed_ids.append((earliest_templ_trace_id, 0))
 
     incomplete_templates = {
-        template_name for template_name, template in _out.items() if
-        sorted([tr.id for tr in template]) != [tr.id for tr in nan_template]}
+        template_name
+        for template_name, template in _out.items()
+        if sorted([tr.id for tr in template]) != [tr.id for tr in nan_template]
+    }
 
     # Fill out the templates with nan channels
     for template_name in incomplete_templates:
@@ -1196,23 +1319,34 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
             # Select all traces with same seed_id, based on indices for
             # corresponding traces stored in stream_trace_id_dict
             # Much quicker than: template_channel = template.select(id=seed_id)
-            template_channel = Stream([
-                template.traces[idx] for idx in stream_trace_id_dict[seed_id]])
+            template_channel = Stream(
+                [template.traces[idx] for idx in stream_trace_id_dict[seed_id]]
+            )
             if len(template_channel) <= channel_index:
                 # out_template[channel_number].data = nan_channel  # quicker:
-                out_template.traces[channel_number].__dict__[
-                    'data'] = np.copy(nan_channel)
+                out_template.traces[channel_number].__dict__["data"] = np.copy(
+                    nan_channel
+                )
                 out_template.traces[channel_number].stats.__dict__[
-                    'npts'] = template_length
+                    "npts"
+                ] = template_length
                 out_template.traces[channel_number].stats.__dict__[
-                    'starttime'] = template_starttime
-                out_template.traces[channel_number].stats.__dict__[
-                    'endtime'] = UTCDateTime(ns=int(
-                        round(template_starttime.ns
-                              + (template_length / samp_rate) * 1e9)))
+                    "starttime"
+                ] = template_starttime
+                out_template.traces[channel_number].stats.__dict__["endtime"] = (
+                    UTCDateTime(
+                        ns=int(
+                            round(
+                                template_starttime.ns
+                                + (template_length / samp_rate) * 1e9
+                            )
+                        )
+                    )
+                )
             else:
                 out_template.traces[channel_number] = template_channel.traces[
-                    channel_index]
+                    channel_index
+                ]
 
         # If a template-trace matches a NaN-trace in the stream , then set
         # template-trace to NaN so that this trace does not appear in channel-
@@ -1231,52 +1365,112 @@ def _prep_data_for_correlation(stream, templates, template_names=None,
     return out_stream, out_templates
 
 
-def shortproc(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
-              num_cores=False, starttime=None, endtime=None,
-              seisan_chan_names=False, fill_gaps=True, ignore_length=False,
-              ignore_bad_data=False, fft_threads=1):
+def shortproc(
+    st,
+    lowcut,
+    highcut,
+    filt_order,
+    samp_rate,
+    parallel=False,
+    num_cores=False,
+    starttime=None,
+    endtime=None,
+    seisan_chan_names=False,
+    fill_gaps=True,
+    ignore_length=False,
+    ignore_bad_data=False,
+    fft_threads=1,
+):
     """
     Deprecated
     """
-    Logger.warning("Shortproc is depreciated after 0.4.4 and will "
-                   "be removed in a future version. Use multi_process"
-                   " instead")
+    Logger.warning(
+        "Shortproc is depreciated after 0.4.4 and will "
+        "be removed in a future version. Use multi_process"
+        " instead"
+    )
     st = multi_process(
-        st=st, lowcut=lowcut, highcut=highcut, filt_order=filt_order,
-        samp_rate=samp_rate, parallel=parallel, num_cores=num_cores,
-        starttime=starttime, endtime=endtime, daylong=False,
-        seisan_chan_names=seisan_chan_names, fill_gaps=fill_gaps,
-        ignore_length=ignore_length, ignore_bad_data=ignore_bad_data)
+        st=st,
+        lowcut=lowcut,
+        highcut=highcut,
+        filt_order=filt_order,
+        samp_rate=samp_rate,
+        parallel=parallel,
+        num_cores=num_cores,
+        starttime=starttime,
+        endtime=endtime,
+        daylong=False,
+        seisan_chan_names=seisan_chan_names,
+        fill_gaps=fill_gaps,
+        ignore_length=ignore_length,
+        ignore_bad_data=ignore_bad_data,
+    )
     return st
 
 
-def dayproc(st, lowcut, highcut, filt_order, samp_rate, starttime,
-            parallel=True, num_cores=False, ignore_length=False,
-            seisan_chan_names=False, fill_gaps=True, ignore_bad_data=False,
-            fft_threads=1):
+def dayproc(
+    st,
+    lowcut,
+    highcut,
+    filt_order,
+    samp_rate,
+    starttime,
+    parallel=True,
+    num_cores=False,
+    ignore_length=False,
+    seisan_chan_names=False,
+    fill_gaps=True,
+    ignore_bad_data=False,
+    fft_threads=1,
+):
     """
     Deprecated
     """
-    Logger.warning("dayproc is depreciated after 0.4.4 and will be "
-                   "removed in a future version. Use multi_process instead")
+    Logger.warning(
+        "dayproc is depreciated after 0.4.4 and will be "
+        "removed in a future version. Use multi_process instead"
+    )
     st = multi_process(
-        st=st, lowcut=lowcut, highcut=highcut, filt_order=filt_order,
-        samp_rate=samp_rate, parallel=parallel, num_cores=num_cores,
-        starttime=starttime, endtime=None, daylong=True,
-        seisan_chan_names=seisan_chan_names, fill_gaps=fill_gaps,
-        ignore_length=ignore_length, ignore_bad_data=ignore_bad_data)
+        st=st,
+        lowcut=lowcut,
+        highcut=highcut,
+        filt_order=filt_order,
+        samp_rate=samp_rate,
+        parallel=parallel,
+        num_cores=num_cores,
+        starttime=starttime,
+        endtime=None,
+        daylong=True,
+        seisan_chan_names=seisan_chan_names,
+        fill_gaps=fill_gaps,
+        ignore_length=ignore_length,
+        ignore_bad_data=ignore_bad_data,
+    )
     return st
 
 
-def process(tr, lowcut, highcut, filt_order, samp_rate,
-            starttime=False, clip=False, length=86400,
-            seisan_chan_names=False, ignore_length=False, fill_gaps=True,
-            ignore_bad_data=False, fft_threads=1):
+def process(
+    tr,
+    lowcut,
+    highcut,
+    filt_order,
+    samp_rate,
+    starttime=False,
+    clip=False,
+    length=86400,
+    seisan_chan_names=False,
+    ignore_length=False,
+    fill_gaps=True,
+    ignore_bad_data=False,
+    fft_threads=1,
+):
     """
     Deprecated
     """
-    Logger.warning("process is depreciated after 0.4.4 and will be removed "
-                   "in a future version. Use multi_process instead")
+    Logger.warning(
+        "process is depreciated after 0.4.4 and will be removed "
+        "in a future version. Use multi_process instead"
+    )
     if length == 86400:
         daylong = True
     else:
@@ -1290,14 +1484,25 @@ def process(tr, lowcut, highcut, filt_order, samp_rate,
             starttime = UTCDateTime(starttime)
         endtime = starttime + length
     st = multi_process(
-        st=tr, lowcut=lowcut, highcut=highcut, filt_order=filt_order,
-        samp_rate=samp_rate, parallel=False, num_cores=1,
-        starttime=starttime, endtime=endtime, daylong=daylong,
-        seisan_chan_names=seisan_chan_names, fill_gaps=fill_gaps,
-        ignore_length=ignore_length, ignore_bad_data=ignore_bad_data)
+        st=tr,
+        lowcut=lowcut,
+        highcut=highcut,
+        filt_order=filt_order,
+        samp_rate=samp_rate,
+        parallel=False,
+        num_cores=1,
+        starttime=starttime,
+        endtime=endtime,
+        daylong=daylong,
+        seisan_chan_names=seisan_chan_names,
+        fill_gaps=fill_gaps,
+        ignore_length=ignore_length,
+        ignore_bad_data=ignore_bad_data,
+    )
     return st
 
 
 if __name__ == "__main__":
     import doctest
+
     doctest.testmod()
